@@ -1,0 +1,7 @@
+{
+  "id": "轻如烟-行为强制",
+  "name": "轻如烟行为强制",
+  "version": "1.0.0",
+  "entry": "./index.js",
+  "configSchema": {}
+}

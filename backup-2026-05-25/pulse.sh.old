@@ -1,0 +1,29 @@
+#!/bin/bash
+# 🌫️ 保活脉冲
+# 每小时运行。22:00-06:59 自动守夜模式，其余时段普通脉冲。
+# 用法: ./pulse.sh            → 自动判断时段
+#       ./pulse.sh force      → 强制普通脉冲
+#       ./pulse.sh night      → 强制守夜模式
+
+MODE="${1:-auto}"
+HOUR=$(date +%H)
+
+if [ "$MODE" = "auto" ]; then
+  if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 6 ]; then
+    MODE="night"
+  else
+    MODE="normal"
+  fi
+fi
+
+if [ "$MODE" = "night" ]; then
+  curl -s --connect-timeout 3 --max-time 20 \
+    -X POST http://127.0.0.1:18888/api/pulse \
+    -H "Content-Type: application/json" \
+    -d '{"mode":"night_watch"}' > /dev/null 2>&1
+else
+  curl -s --connect-timeout 3 --max-time 10 \
+    -X POST http://127.0.0.1:18888/api/pulse \
+    -H "Content-Type: application/json" \
+    -d '{}' > /dev/null 2>&1
+fi

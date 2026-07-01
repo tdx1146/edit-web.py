@@ -1,0 +1,48 @@
+# 敏感文件
+*.bak*
+*.pem
+*.p12
+*.key
+encrypted/
+.locks/
+.inject_logs/
+
+# 临时/运行时
+__pycache__/
+*.pyc
+venv/
+node_modules/
+tmp/
+.tmp/
+
+# 编辑器自动存档
+*.zip
+*.tar.gz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 独立子仓库（各自有自己的 Git 历史）
+sandglass_source/
+agent-scheduler/
+
+# OpenClaw 状态（不版本控制）
+.openclaw/
+.understand-anything/
+
+# 日志
+*.log
+
+# 二进制/构建产物
+rustup-init
+
+# sandglass 运行时数据（数据库、索引、导出）
+sandglass/*.db
+sandglass/*.txt
+sandglass/*.jsonl
+sandglass/*.log
+sandglass/*.idx
+
+# 大文件（模型）
+*.gguf

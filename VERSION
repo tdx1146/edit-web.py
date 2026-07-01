@@ -1,0 +1,15 @@
+版本: v4.2 (Current Running) — 2026-06-28
+状态: ✅ 当前运行版本完整备份
+架构: 前后端分离（handlers/*.py + utils/*.py + inject-helper.mjs）
+文件: edit-web.py, inject-helper.mjs, handlers/9文件, utils/9文件, static/, embed-server.mjs, editor-config.json
+
+变更记录:
+  [6/25] v4 — 架构重建（路由分离到 router.py，工具分离到 utils/）
+  [6/26] v4.1 — inject 修复: subprocess.Popen → subprocess.run
+             — 前端超时重试 + 乐观消息清除
+             — 清除守护脚本冲突, 创建 start-clean.sh
+  [6/28] v4.2 — 完整备份到 编辑器所有版本/v4.2_20260628_current-running/
+             — 新增 utils/version.py (版本号唯一数据源)
+             — 新增 /api/version 端点
+             — 前端 title 动态从 API 获取
+             — 同步 embed-server.mjs, editor-config.json, README.md, VERSION_COMPARISON.md

@@ -1,0 +1,40 @@
+use_default_settings:
+  engines:
+    remove:
+      - baidu
+      - sogou
+      - 360search
+      - google
+      - startpage
+
+server:
+  secret_key: "a1b2c3d4e5f678901234567890abcdef0123456789abcdef0123456789abcdef"
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+  image_proxy: false
+
+search:
+  default_lang: "zh-CN"
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+ui:
+  default_theme: simple
+
+engines:
+  - name: bing
+    engine: bing
+    disabled: false
+    base_url: "https://cn.bing.com"
+    timeout: 8.0
+
+  - name: duckduckgo
+    disabled: false
+    timeout: 8.0
+
+  - name: wikipedia
+    disabled: false
+    timeout: 8.0

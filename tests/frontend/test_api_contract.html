@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html><head><title>前端 API 测试</title></head>
+<body>
+<h1>前端 API 冒烟测试</h1>
+<div id="results"></div>
+<script>
+const BASE = 'http://127.0.0.1:18888';
+const tests = [];
+
+async function test(name, fn) {
+  try {
+    await fn();
+    tests.push({name, ok: true});
+  } catch(e) {
+    tests.push({name, ok: false, error: e.message});
+  }
+}
+
+// 测试：/api/status 可访问
+await test('api/status', async () => {
+  const r = await fetch(BASE + '/api/status');
+  if (r.status !== 200) throw new Error('status=' + r.status);
+  const d = await r.json();
+  if (!d.ok) throw new Error('ok=false');
+});
+
+// 测试：/api/version 可访问
+await test('api/version', async () => {
+  const r = await fetch(BASE + '/api/version');
+  if (r.status !== 200) throw new Error('status=' + r.status);
+  const d = await r.json();
+  if (!d.version) throw new Error('no version');
+});
+
+// 渲染结果
+const div = document.getElementById('results');
+const ok = tests.filter(t => t.ok).length;
+const fail = tests.filter(t => !t.ok).length;
+div.innerHTML = `<h2>${ok}/${tests.length} 通过${fail > 0 ? ', ' + fail + ' 失败' : ''}</h2>
+<ul>${tests.map(t => `<li style="color:${t.ok?'green':'red'}">${t.ok?'✅':'❌'} ${t.name}${t.error ? ': ' + t.error : ''}</li>`).join('')}</ul>`;
+</script>
+</body></html>
