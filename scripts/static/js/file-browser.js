@@ -1,3 +1,6 @@
+// ── ES Module imports ──
+import { api } from './core.js';
+
 function tbToggleBrowser() {
   var browser = document.getElementById('tb-browser');
   var btn = document.getElementById('tb-browse-btn');
@@ -18,11 +21,11 @@ function tbToggleBrowser() {
     saved = null;
   }
   if (saved) {
-    tbCurrentBrowsePath = saved;
+    window.tbCurrentBrowsePath = saved;
   }
   browser.innerHTML = '<div style="padding:12px;color:#8b949e;text-align:center;font-size:12px">加载中...</div>';
   browser.style.display = 'block';
-  tbLoadTree(tbCurrentBrowsePath || null);
+  tbLoadTree(window.tbCurrentBrowsePath || null);
 }
 
 async function tbLoadTree(dirPath) {
@@ -38,7 +41,7 @@ async function tbLoadTree(dirPath) {
       // fallback: 如果 localStorage 的路径失效，退回到 browseDirs()
       if (dirPath && localStorage.getItem('tb_browse_path')) {
         localStorage.removeItem('tb_browse_path');
-        tbCurrentBrowsePath = '';
+        window.tbCurrentBrowsePath = '';
         tbLoadTree(null);
         return;
       }
@@ -49,15 +52,15 @@ async function tbLoadTree(dirPath) {
 
     // 根目录 = browse-dirs 返回的 root，跟 config 一致
     if (d.ok && d.root) {
-      tbRootPath = d.root;
+      window.tbRootPath = d.root;
     }
     var files = d.files || [];
-    var root = d.root || tbRootPath;
-    if (root) tbRootPath = root;
+    var root = d.root || window.tbRootPath;
+    if (root) window.tbRootPath = root;
 
     browser.innerHTML = '';
-    var curDir = dirPath || tbRootPath;
-    tbCurrentBrowsePath = curDir;
+    var curDir = dirPath || window.tbRootPath;
+    window.tbCurrentBrowsePath = curDir;
     localStorage.setItem('tb_browse_path', curDir);
 
     // 当前目录头 + 回到根按钮
@@ -69,18 +72,18 @@ async function tbLoadTree(dirPath) {
     header.dataset.type = 'current-folder';
     header.dataset.path = curDir;
     headerRow.appendChild(header);
-    if (curDir !== tbRootPath) {
+    if (curDir !== window.tbRootPath) {
       var homeBtn = document.createElement('span');
       homeBtn.style.cssText = 'cursor:pointer;color:#58a6ff;font-size:11px;padding:2px 6px;white-space:nowrap';
       homeBtn.textContent = '↩️ 根';
       homeBtn.dataset.type = 'root';
-      homeBtn.dataset.path = tbRootPath;
+      homeBtn.dataset.path = window.tbRootPath;
       headerRow.appendChild(homeBtn);
     }
     browser.appendChild(headerRow);
 
     // 移动目标指示
-    if (tbMovePath) {
+    if (window.tbMovePath) {
       var moveBar = document.createElement('div');
       moveBar.style.cssText = 'padding:6px 12px;background:#2d1b69;color:#d2a8ff;font-size:11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #30363d';
       moveBar.innerHTML = '📌 移动至: 当前目录';
@@ -103,7 +106,7 @@ async function tbLoadTree(dirPath) {
       var p = dirPath;
       // 去掉尾部的 /
       if (p.endsWith('/')) p = p.slice(0, -1);
-      var r = tbRootPath;
+      var r = window.tbRootPath;
       if (r && r.endsWith('/')) r = r.slice(0, -1);
       if (p !== r) {
         var parentPath = p.substring(0, p.lastIndexOf('/'));
@@ -117,14 +120,14 @@ async function tbLoadTree(dirPath) {
     var folderItems = d.items || [];
     for (var i = 0; i < folderItems.length; i++) {
       var item = folderItems[i];
-      var childPath = dirPath ? dirPath + '/' + item.name : tbRootPath + '/' + item.name;
+      var childPath = dirPath ? dirPath + '/' + item.name : window.tbRootPath + '/' + item.name;
       addTreeEl('folder', '📁 ' + item.name + ' (' + item.md_count + ')', {path: childPath, name: item.name});
     }
 
     // 文件
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      var fpath = dirPath ? dirPath + '/' + f.name : tbRootPath + '/' + f.name;
+      var fpath = dirPath ? dirPath + '/' + f.name : window.tbRootPath + '/' + f.name;
       addTreeEl('file', '📄 ' + f.name + ' (' + f.size_kb + 'KB)', {path: fpath, name: f.name});
     }
 
@@ -193,28 +196,28 @@ function tbHandleTreeClick(e) {
   var name = target.dataset.name;
 
   if (type === 'back') {
-    tbCurrentPath = path;
-    tbCurrentName = '..';
+    window.tbCurrentPath = path;
+    window.tbCurrentName = '..';
     tbLoadTree(path);
     tbUpdatePathDisplay();
   } else if (type === 'root') {
-    tbCurrentPath = path;
-    tbCurrentName = '';
+    window.tbCurrentPath = path;
+    window.tbCurrentName = '';
     tbLoadTree(path);
     tbUpdatePathDisplay();
   } else if (type === 'folder') {
-    tbCurrentPath = path;
-    tbCurrentName = name || '';
+    window.tbCurrentPath = path;
+    window.tbCurrentName = name || '';
     tbLoadTree(path);
     tbUpdatePathDisplay();
   } else if (type === 'file') {
-    tbCurrentPath = path;
-    tbCurrentName = name || '';
+    window.tbCurrentPath = path;
+    window.tbCurrentName = name || '';
     tbUpdatePathDisplay();
     tbSelectFile(path, name);
   } else if (type === 'current-folder') {
-    tbCurrentPath = path;
-    tbCurrentName = '';
+    window.tbCurrentPath = path;
+    window.tbCurrentName = '';
     tbTreeClose();
     tbUpdatePathDisplay();
   } else if (type === 'new-folder') {
@@ -222,29 +225,29 @@ function tbHandleTreeClick(e) {
   } else if (type === 'new-file') {
     tbNewFile(path);
   } else if (type === 'move-start') {
-    tbMovePath = path;
+    window.tbMovePath = path;
     tbMoveName = name || '';
     document.getElementById('tb-path-status').textContent = '📌 已标记移动: ' + (name || path);
     tbTreeClose();
   } else if (type === 'paste-move') {
-    tbConfirmMove(tbMovePath, path);
+    tbConfirmMove(window.tbMovePath, path);
   } else if (type === 'cancel-move') {
-    tbMovePath = '';
+    window.tbMovePath = '';
     tbMoveName = '';
-    tbLoadTree(tbCurrentBrowsePath);
+    tbLoadTree(window.tbCurrentBrowsePath);
     document.getElementById('tb-path-status').textContent = '已取消移动';
   }
 }
 
 function tbUpdatePathDisplay() {
   var lbl = document.getElementById('tb-path-label');
-  if (lbl) lbl.textContent = tbCurrentName || '选择文件...';
+  if (lbl) lbl.textContent = window.tbCurrentName || '选择文件...';
   var cur = document.getElementById('tb-cur-path');
-  if (cur) cur.textContent = tbCurrentPath ? tbCurrentPath : '';
+  if (cur) cur.textContent = window.tbCurrentPath ? window.tbCurrentPath : '';
   var renameBtn = document.getElementById('tb-rename-btn');
   var deleteBtn = document.getElementById('tb-delete-btn');
   var moveBtn = document.getElementById('tb-move-btn');
-  if (tbCurrentPath) {
+  if (window.tbCurrentPath) {
     if (renameBtn) renameBtn.style.display = '';
     if (deleteBtn) deleteBtn.style.display = '';
     if (moveBtn) moveBtn.style.display = '';
@@ -271,9 +274,9 @@ document.addEventListener('click', function(e) {
   if (editArea && editArea.style.display !== 'none' && editArea.contains(e.target)) return;
   if (tb && !tb.contains(e.target) && !b.contains(e.target)) {
     // 点击工具栏外清除选择
-    if (tbCurrentPath) {
-      tbCurrentPath = '';
-      tbCurrentName = '';
+    if (window.tbCurrentPath) {
+      window.tbCurrentPath = '';
+      window.tbCurrentName = '';
       tbUpdatePathDisplay();
     }
   }
@@ -285,8 +288,8 @@ document.addEventListener('click', function(e) {
 // ===== 文件操作 =====
 async function tbSelectFile(fullPath, fileName) {
   if (!fullPath || !fileName) return;
-  tbCurrentPath = fullPath;
-  tbCurrentName = fileName;
+  window.tbCurrentPath = fullPath;
+  window.tbCurrentName = fileName;
   document.getElementById('tb-content-area').dataset.currentPath = fullPath;
   tbUpdatePathDisplay();
   tbTreeClose();
@@ -305,7 +308,7 @@ async function tbSelectFile(fullPath, fileName) {
 
 async function tbSaveFile() {
   var editArea = document.getElementById('tb-content-area');
-  var path = editArea && editArea.dataset.currentPath ? editArea.dataset.currentPath : tbCurrentPath;
+  var path = editArea && editArea.dataset.currentPath ? editArea.dataset.currentPath : window.tbCurrentPath;
   var content = document.getElementById('tb-content');
   if (!path) { document.getElementById('tb-path-status').textContent = '❌ 未选择文件'; return; }
   if (!content) { document.getElementById('tb-path-status').textContent = '❌ 编辑器未找到'; return; }
@@ -323,11 +326,11 @@ async function tbSaveFile() {
 function tbCopyPath() {
   var editArea = document.getElementById('tb-content-area');
   var fallbackPath = editArea && editArea.dataset.currentPath ? editArea.dataset.currentPath : '';
-  if (!tbCurrentPath && !fallbackPath) {
+  if (!window.tbCurrentPath && !fallbackPath) {
     document.getElementById('tb-path-status').textContent = '请先选择文件或目录';
     return;
   }
-  var copyPath = tbCurrentPath || fallbackPath;
+  var copyPath = window.tbCurrentPath || fallbackPath;
   try {
     var ta = document.createElement('textarea');
     ta.value = copyPath;
@@ -387,17 +390,17 @@ async function tbNewFile(dirPath) {
 
 
 async function tbDelete() {
-  if (!tbCurrentPath) return;
-  var label = tbCurrentName || tbCurrentPath.split('/').pop();
+  if (!window.tbCurrentPath) return;
+  var label = window.tbCurrentName || window.tbCurrentPath.split('/').pop();
   if (!confirm('删除 "' + label + '" - 确定吗？')) return;
   if (!confirm('再次确认："' + label + '"删除后不可恢复。')) return;
   document.getElementById('tb-path-status').textContent = '正在删除 ' + label + '...';
-  var d = await api.tbDelete(tbCurrentPath);
+  var d = await api.tbDelete(window.tbCurrentPath);
   if (d.ok) {
     document.getElementById('tb-path-status').textContent = '✅ 已删除: ' + label;
-    var curPath = tbCurrentPath;
-    tbCurrentPath = '';
-    tbCurrentName = '';
+    var curPath = window.tbCurrentPath;
+    window.tbCurrentPath = '';
+    window.tbCurrentName = '';
     tbUpdatePathDisplay();
     document.getElementById('tb-content-area').style.display = 'none';
     var parent = curPath.substring(0, curPath.lastIndexOf('/'));
@@ -408,19 +411,19 @@ async function tbDelete() {
 }
 
 async function tbRename() {
-  var capturedPath = tbCurrentPath;
+  var capturedPath = window.tbCurrentPath;
   if (!capturedPath) return;
-  var oldName = tbCurrentName || capturedPath.split('/').pop();
+  var oldName = window.tbCurrentName || capturedPath.split('/').pop();
   var newName = await tbShowPrompt('重命名 "' + oldName + '" 为：', oldName);
   if (!newName || newName === oldName) return;
   document.getElementById('tb-path-status').textContent = '正在重命名... (' + capturedPath + ' → ' + newName + ')';
   var d = await api.tbRename(capturedPath, newName, '');
   if (d.ok) {
     document.getElementById('tb-path-status').textContent = '✅ 已重命名为: ' + newName;
-    tbCurrentPath = d.new_path || (capturedPath.substring(0, capturedPath.lastIndexOf('/')) + '/' + newName);
-    tbCurrentName = newName;
+    window.tbCurrentPath = d.new_path || (capturedPath.substring(0, capturedPath.lastIndexOf('/')) + '/' + newName);
+    window.tbCurrentName = newName;
     tbUpdatePathDisplay();
-    tbLoadTree(tbCurrentPath.substring(0, tbCurrentPath.lastIndexOf('/')));
+    tbLoadTree(window.tbCurrentPath.substring(0, window.tbCurrentPath.lastIndexOf('/')));
   } else {
     document.getElementById('tb-path-status').textContent = '❌ ' + (d.error || '重命名失败');
   }
@@ -428,9 +431,9 @@ async function tbRename() {
 
 // ===== 移动文件 =====
 function tbStartMove() {
-  if (!tbCurrentPath) return;
-  tbMovePath = tbCurrentPath;
-  tbMoveName = tbCurrentName || tbCurrentPath.split('/').pop();
+  if (!window.tbCurrentPath) return;
+  window.tbMovePath = window.tbCurrentPath;
+  tbMoveName = window.tbCurrentName || window.tbCurrentPath.split('/').pop();
   document.getElementById('tb-path-status').textContent = '📌 已标记: ' + tbMoveName + '，打开树选择目标目录';
   // 自动打开树
   tbToggleBrowser();
@@ -443,12 +446,12 @@ async function tbConfirmMove(source, targetDir) {
   document.getElementById('tb-path-status').textContent = '正在移动...';
   var st = document.getElementById('tb-path-status');
   var d = await api.tbRename(source, name, targetDir);
-  tbMovePath = '';
+  window.tbMovePath = '';
   tbMoveName = '';
   if (d.ok) {
     st.textContent = '✅ 已移动至: ' + targetDir;
-    tbCurrentPath = '';
-    tbCurrentName = '';
+    window.tbCurrentPath = '';
+    window.tbCurrentName = '';
     tbUpdatePathDisplay();
     tbLoadTree(targetDir);
   } else {
@@ -457,8 +460,8 @@ async function tbConfirmMove(source, targetDir) {
     var d2 = await api.tbRename(source, name, targetDir);
     if (d2.ok) {
       st.textContent = '✅ 已移动至: ' + targetDir;
-      tbCurrentPath = '';
-      tbCurrentName = '';
+      window.tbCurrentPath = '';
+      window.tbCurrentName = '';
       tbUpdatePathDisplay();
       tbLoadTree(targetDir);
     } else {
@@ -467,6 +470,32 @@ async function tbConfirmMove(source, targetDir) {
     }
   }
 }
+
+// ── ES Module exports ──
+export {
+  tbToggleBrowser, tbLoadTree, addTreeEl, tbHandleTreeClick,
+  tbUpdatePathDisplay, tbTreeClose, tbSelectFile, tbSaveFile,
+  tbCopyPath, tbShowPrompt, tbNewFolder, tbNewFile,
+  tbDelete, tbRename, tbStartMove, tbConfirmMove
+};
+
+// ── Window bridge ──
+window.tbToggleBrowser = tbToggleBrowser;
+window.tbLoadTree = tbLoadTree;
+window.addTreeEl = addTreeEl;
+window.tbHandleTreeClick = tbHandleTreeClick;
+window.tbUpdatePathDisplay = tbUpdatePathDisplay;
+window.tbTreeClose = tbTreeClose;
+window.tbSelectFile = tbSelectFile;
+window.tbSaveFile = tbSaveFile;
+window.tbCopyPath = tbCopyPath;
+window.tbShowPrompt = tbShowPrompt;
+window.tbNewFolder = tbNewFolder;
+window.tbNewFile = tbNewFile;
+window.tbDelete = tbDelete;
+window.tbRename = tbRename;
+window.tbStartMove = tbStartMove;
+window.tbConfirmMove = tbConfirmMove;
 
 
 

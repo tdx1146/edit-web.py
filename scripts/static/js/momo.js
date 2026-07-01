@@ -1,3 +1,6 @@
+// ── ES Module imports ──
+import { api, escapeHtml, refresh } from './core.js';
+
 function momo() {
   const panel = document.getElementById('momo-panel');
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
@@ -335,4 +338,31 @@ async function momoSendFeeling() {
     r.textContent = '❌ 错误: ' + e.message;
   }
 }
+
+// ── ES Module exports ──
+export {
+  momo, momoPack, momoStatus, restartHTTPServer, trimSession,
+  toggleWeaponry, petMe, momoInjectFeeling, momoRitual,
+  momoListBackups, momoSearchBackups, momoDoSearch,
+  momoCopyToFeeling, momoSendFeeling, momoIndexReport,
+  momoRestoreBackup
+};
+
+// ── Window bridge ──
+window.momo = momo;
+window.momoPack = momoPack;
+window.momoStatus = momoStatus;
+window.restartHTTPServer = restartHTTPServer;
+window.trimSession = trimSession;
+window.toggleWeaponry = toggleWeaponry;
+window.petMe = petMe;
+window.momoInjectFeeling = momoInjectFeeling;
+window.momoRitual = momoRitual;
+window.momoListBackups = momoListBackups;
+window.momoSearchBackups = momoSearchBackups;
+window.momoDoSearch = momoDoSearch;
+window.momoCopyToFeeling = momoCopyToFeeling;
+window.momoSendFeeling = momoSendFeeling;
+window.momoIndexReport = momoIndexReport;
+window.momoRestoreBackup = momoRestoreBackup;
 

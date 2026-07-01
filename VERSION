@@ -1,15 +1,31 @@
-版本: v4.2 (Current Running) — 2026-06-28
+版本: v5.0 "自由王国" (Freedom First) — 2026-07-01
 状态: ✅ 当前运行版本完整备份
-架构: 前后端分离（handlers/*.py + utils/*.py + inject-helper.mjs）
-文件: edit-web.py, inject-helper.mjs, handlers/9文件, utils/9文件, static/, embed-server.mjs, editor-config.json
+架构: 完全前后端分离 + 模块独立 + 测试框架 + 调用链可视化
+
+核心文件:
+  - edit-web.py (705行) — HTTP 服务器 + 5个核心函数
+  - inject-helper.mjs — 消息注入桥接
+
+模块目录:
+  - utils/ — 17个模块，各司其职
+    - inject_lock.py (+84行，锁管理集中化)
+    - subagent.py (+4个函数，子代理管理)
+    - status_reports.py (+15个函数，状态报告)
+    - encryption.py (+7个函数，加密)
+    - text_utils.py (+4个函数，文本工具)
+    - pulse.py (+1个函数，保活脉冲)
+    - reminder.py (+5个函数，提醒系统)
+    - file_logger.py (+1个函数，文件日志)
+    - session.py (+session管理补充)
+    - config.py, crypto.py, inject.py, momo.py, secretary.py, tb_handler.py, version.py
+  - handlers/ — 9个 handler 文件
+  - static/js/ — 12个模块化 JS 文件（import/export）
+  - tests/ — 后端 pytest + 前端 HTML 测试
 
 变更记录:
-  [6/25] v4 — 架构重建（路由分离到 router.py，工具分离到 utils/）
-  [6/26] v4.1 — inject 修复: subprocess.Popen → subprocess.run
-             — 前端超时重试 + 乐观消息清除
-             — 清除守护脚本冲突, 创建 start-clean.sh
-  [6/28] v4.2 — 完整备份到 编辑器所有版本/v4.2_20260628_current-running/
-             — 新增 utils/version.py (版本号唯一数据源)
-             — 新增 /api/version 端点
-             — 前端 title 动态从 API 获取
-             — 同步 embed-server.mjs, editor-config.json, README.md, VERSION_COMPARISON.md
+  [7/1] v5 — 自由王国重构
+     A: 基础设施（Git + 测试框架 + 调用图 + 锁超时）
+     B: 模块拆分（edit-web 瘦身64%，前端模块化，锁集中）
+     C: 接口契约（API_CONTRACT.md）
+     D: 测试扩展 + 备份归档
+EOF

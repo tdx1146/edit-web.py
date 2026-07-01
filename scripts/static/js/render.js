@@ -1,4 +1,7 @@
 
+// ── ES Module imports ──
+import { store, api, renderMarkdown, escapeHtml, toast, fmtNum } from './core.js';
+
 // ── merged from cache.js ──
 // cache.js — 展开的缓存面板（精简版，不碰 cache-summary，只写 cache-overview）
 async function loadCacheStats() {
@@ -361,17 +364,17 @@ function updatePaginationState() {
 }
 
 
-var tbRootPath = '';
-var tbCurrentPath = '';
-var tbCurrentName = '';
-var tbCurrentBrowsePath = ''; // 当前浏览的目录（记忆用）
-var tbMovePath = ''; // 待移动的路径
+var tbRootPath = window.tbRootPath = '';
+var tbCurrentPath = window.tbCurrentPath = '';
+var tbCurrentName = window.tbCurrentName = '';
+var tbCurrentBrowsePath = window.tbCurrentBrowsePath = ''; // 当前浏览的目录（记忆用）
+var tbMovePath = window.tbMovePath = ''; // 待移动的路径
 
 // ===== 树弹出 =====
 
 // ── merged from memory-file.js ──
 // 📂 记忆文件系统 - 跳出对话窗口的另一种对话
-let _memFileList = [];
+let _memFileList = window._memFileList = [];
 
 async function toggleMemoryFile() {
   const panel = document.getElementById('memory-file-panel');
@@ -595,7 +598,7 @@ function renderCountText(st) {
 
 // ── TTS ────────────────────────────────────────────
 // ── 增量渲染 ────────────────────────────────────────────────────────────
-var _lastRenderHash = '';
+var _lastRenderHash = window._lastRenderHash = '';
 
 function pairHash(st) {
   if (!st || !st.pairs || st.pairs.length === 0) return 'empty';
@@ -653,4 +656,52 @@ function renderPage() {
 }
 
 // ── 子代理面板 ────────────────────────────────────────────────────────────
-let subagentPanelOpen = false;
+let subagentPanelOpen = window.subagentPanelOpen = false;
+
+// ── ES Module exports ──
+export {
+  loadFactsLightbox, closeFactsOverlay,
+  ttsReadBtn, openReminderDialog, closeReminderDialog,
+  addReminder, doneReminder, clearDoneReminders,
+  enableMobileResize, setupPagination, renderPagination,
+  goToPage, jumpPage, updatePaginationState,
+  toggleMemoryFile, closeMemFile, loadMemFileList,
+  renderMemFileList, loadMemFile, saveMemoryFile,
+  rpcMessagesToPairs, fmtTime, fmtTimeFull,
+  renderMessagesHtml, renderCountText, pairHash, renderPage,
+  ttsRate, _ttsAudio, _lastRenderHash,
+  tbRootPath, tbCurrentPath, tbCurrentName,
+  tbCurrentBrowsePath, tbMovePath, _memFileList, subagentPanelOpen
+};
+
+// ── Window bridge (for onclick handlers in HTML and cross-file globals) ──
+window.loadFactsLightbox = loadFactsLightbox;
+window.closeFactsOverlay = closeFactsOverlay;
+window.ttsReadBtn = ttsReadBtn;
+window.openReminderDialog = openReminderDialog;
+window.closeReminderDialog = closeReminderDialog;
+window.addReminder = addReminder;
+window.doneReminder = doneReminder;
+window.clearDoneReminders = clearDoneReminders;
+window.setupPagination = setupPagination;
+window.renderPagination = renderPagination;
+window.goToPage = goToPage;
+window.jumpPage = jumpPage;
+window.updatePaginationState = updatePaginationState;
+window.toggleMemoryFile = toggleMemoryFile;
+window.closeMemFile = closeMemFile;
+window.loadMemFileList = loadMemFileList;
+window.renderMemFileList = renderMemFileList;
+window.loadMemFile = loadMemFile;
+window.saveMemoryFile = saveMemoryFile;
+window.rpcMessagesToPairs = rpcMessagesToPairs;
+window.fmtTime = fmtTime;
+window.fmtTimeFull = fmtTimeFull;
+window.renderMessagesHtml = renderMessagesHtml;
+window.renderCountText = renderCountText;
+window.renderPage = renderPage;
+window.pairHash = pairHash;
+window.ttsRate = ttsRate;
+window._ttsAudio = _ttsAudio;
+window._lastRenderHash = _lastRenderHash;
+window.enableMobileResize = enableMobileResize;

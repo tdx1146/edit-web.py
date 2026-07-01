@@ -1,3 +1,7 @@
+// ── ES Module imports ──
+import { store, api, escapeHtml, toast, refresh, _renderSentCache } from './core.js';
+import { renderPage } from './render.js';
+
 document.addEventListener('DOMContentLoaded', function() {
   _renderSentCache();
   // 🌫️ 自驱思维链：定时提醒自己深入思考
@@ -74,7 +78,7 @@ function awakeRenderList(questions) {
   }
 }
 
-let _awakeBankOpen = false;
+let _awakeBankOpen = window._awakeBankOpen = false;
 
 function awakeToggleBank() {
   _awakeBankOpen = !_awakeBankOpen;
@@ -272,12 +276,12 @@ async function _awakeDoSend(truncate) {
           store.msgCache = d.messages || [];
           store.pairs = d.pairs || [];
           store.totalPages = store.pairs.length;
-          _lastRenderHash = '';  // 强制下次 renderPage 重建 DOM
+          window._lastRenderHash = '';  // 强制下次 renderPage 重建 DOM
           // 保持当前位置，除非当前页已超出范围
           if (store.currentPage >= store.totalPages) store.currentPage = store.totalPages - 1;
           renderPage();
           // 后备：5 秒后强制刷新一次（AI 可能回复中）
-          setTimeout(function() { _lastRenderHash = ''; renderPage(); }, 5000);
+          setTimeout(function() { window._lastRenderHash = ''; renderPage(); }, 5000);
           // 检测 AI 是否回复（最新消息在末尾）
           const lastPair = d.pairs[d.pairs.length - 1];
           const txt = (lastPair && lastPair.assistants ? lastPair.assistants[0]?.text : '') || '';
@@ -367,3 +371,30 @@ async function awakeSave() {
 
 function hideAwake() {
 }
+
+// ── ES Module exports ──
+export {
+  toggleDialog, abortThinking, awakePick, awakeRefreshList,
+  awakeRenderList, awakeToggleBank, awakeFilter, awakeSelect,
+  awakeEditBank, awakeSaveBank, awakeSendNoTrunc, awakeSendTrunc,
+  removeOptimisticMessage, resendLastMessage, _awakeDoSend,
+  awakeSave, hideAwake
+};
+
+// ── Window bridge ──
+window.toggleDialog = toggleDialog;
+window.abortThinking = abortThinking;
+window.awakePick = awakePick;
+window.awakeRefreshList = awakeRefreshList;
+window.awakeRenderList = awakeRenderList;
+window.awakeToggleBank = awakeToggleBank;
+window.awakeFilter = awakeFilter;
+window.awakeSelect = awakeSelect;
+window.awakeEditBank = awakeEditBank;
+window.awakeSaveBank = awakeSaveBank;
+window.awakeSendNoTrunc = awakeSendNoTrunc;
+window.awakeSendTrunc = awakeSendTrunc;
+window.removeOptimisticMessage = removeOptimisticMessage;
+window.resendLastMessage = resendLastMessage;
+window.awakeSave = awakeSave;
+window.hideAwake = hideAwake;

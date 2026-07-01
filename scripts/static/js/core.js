@@ -1,4 +1,7 @@
 
+// ── ES Module export ─────────────────────────────────────────────────────────
+// 桥接层：导出全局 API，保持与 HTML onclick 等传统用法的兼容
+
 // ── 状态层 ──────────────────────────────────────────────────────────────────
 const store = {
   msgCache: [], pairs: [], currentPage: 0, totalPages: 0,
@@ -74,6 +77,10 @@ const api = {
   awakeList:     () => api.get('/api/awake-questions/list'),
   awakeSave:     (c) => api.post('/api/awake-questions/save', {content: c}),
   spawnSubagent: (t, m) => api.post('/api/spawn-subagent', {task: t, model: m}),
+  execSubagent: (t, m) => api.post('/api/spawn-subagent', {task: t, model: m}),
+  authSubagent: () => api.post('/api/subagent-auth'),
+  subagentsList: () => api.get('/api/subagents'),
+  subagentHist: () => api.get('/api/subagent-history'),
 };
 
 // ── Markdown 渲染 ──────────────────────────────────────────────────────────
@@ -123,7 +130,7 @@ function toggleCachePanel() {
   if (!el || !toggler) return;
   el.style.display = cachePanelOpen ? 'block' : 'none';
   toggler.textContent = cachePanelOpen ? '▼' : '▶';
-  if (cachePanelOpen && typeof loadCacheStats === 'function') loadCacheStats();
+  if (cachePanelOpen && typeof window.loadCacheStats === 'function') window.loadCacheStats();
 }
 
 // ── 上下文监控 ──
@@ -191,14 +198,14 @@ var _pollTimer = setInterval(async function() {
       }
       if (changed) {
         _lastPairCount = d.pairs.length;
-        _lastRenderHash = '';
+        window._lastRenderHash = '';
         // 用 refresh 完整拉取，不手动操作 store
-        if (typeof refresh === 'function') {
+        if (typeof window.refresh === 'function') {
           refresh();
         } else {
           var cur = (typeof store.currentPage !== 'undefined') ? store.currentPage : 0;
           storeSet({ msgCache: d.messages || [], pairs: d.pairs, totalPages: d.pairs.length, currentPage: cur });
-          if (typeof renderPage === 'function') renderPage();
+          if (typeof window.renderPage === 'function') window.renderPage();
         }
       }
     }
@@ -252,7 +259,7 @@ async function refresh() {
         store.totalPages = d.pairs.length;
         _lastPairCount = d.pairs.length;
       }
-      if (store.pairs.length > 0 && typeof renderPage === 'function') renderPage();
+      if (store.pairs.length > 0 && typeof window.renderPage === 'function') window.renderPage();
     }
   } catch(e) {}
 }
@@ -309,3 +316,65 @@ fetch('/api/version')
   .then(r => r.json())
   .then(d => { if (d.ok) document.title = '轻如烟姐姐 对话编辑器 ' + d.full; })
   .catch(() => {});
+
+// ── CL 组件框架：搬到 core.js 保证在 components.js 之前执行 ──
+var CL = window.CL = (function() {
+  var components = {};
+  var registry = {};
+
+  function register(name, spec) {
+    if (registry[name]) throw '@' + name + ' already registered';
+    spec.name = name;
+    registry[name] = spec;
+    // 注入容器
+    var el = document.getElementById(spec.container);
+    if (!el) {
+      // 自动创建容器
+      el = document.createElement('div');
+      el.id = spec.container;
+      var parent = document.getElementById(spec.parent) || document.body;
+      parent.appendChild(el);
+    }
+    spec.el = el;
+    if (spec.init) spec.init(spec);
+    return spec;
+  }
+
+  function get(name) { return registry[name]; }
+
+  function render(name) {
+    var s = registry[name];
+    if (!s) return;
+    try { s.render(s, s.el); }
+    catch(e) { console.error('CL.' + name + ' render error:', e); }
+  }
+
+  function renderAll() {
+    for (var k in registry) render(k);
+  }
+
+  return { register: register, get: get, render: render, renderAll: renderAll };
+})();
+
+// ── Window bridge (functions referenced via HTML onclick handlers) ──
+window.refresh = refresh;
+window.renderMarkdown = renderMarkdown;
+window.toast = toast;
+window.fmtNum = fmtNum;
+window.escapeHtml = escapeHtml;
+window.storeSet = storeSet;
+window.toggleCachePanel = toggleCachePanel;
+window.updateContextDisplay = updateContextDisplay;
+window.updateCachePct = updateCachePct;
+window.sentRetry = sentRetry;
+window.sentEdit = sentEdit;
+window._renderSentCache = _renderSentCache;
+window.CL = CL;
+
+// ── ES Module exports ──
+export {
+  store, storeSet, api, renderMarkdown, toggleCachePanel,
+  updateContextDisplay, updateCachePct, fmtNum, escapeHtml,
+  toast, refresh, _renderSentCache, sentRetry, sentEdit,
+  CL
+};

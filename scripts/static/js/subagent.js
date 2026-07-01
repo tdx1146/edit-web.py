@@ -1,3 +1,10 @@
+// ── ES Module imports ──
+import { api, escapeHtml, toast } from './core.js';
+// window.subagentPanelOpen is managed via window bridge (mutable shared state)
+import './render.js';
+
+var subagentPollTimer = null;
+
 // subagent.js — 从 modules.js 拆分
 async function loadSubagents() {
   try {
@@ -92,18 +99,18 @@ async function loadSubagents() {
 function startSubagentPolling() {
   if (subagentPollTimer) clearInterval(subagentPollTimer);
   subagentPollTimer = setInterval(() => {
-    if (subagentPanelOpen && document.getElementById('subagent-detail').style.display === 'block') {
+    if (window.subagentPanelOpen && document.getElementById('subagent-detail').style.display === 'block') {
       loadSubagents();
     }
   }, 5000);
 }
 
 function toggleSubagentPanel() {
-  subagentPanelOpen = !subagentPanelOpen;
+  window.subagentPanelOpen = !window.subagentPanelOpen;
   const el = document.getElementById('subagent-detail');
-  el.style.display = subagentPanelOpen ? 'block' : 'none';
-  document.getElementById('subagent-toggle').textContent = subagentPanelOpen ? '▼' : '▶';
-  if (subagentPanelOpen) {
+  el.style.display = window.subagentPanelOpen ? 'block' : 'none';
+  document.getElementById('subagent-toggle').textContent = window.subagentPanelOpen ? '▼' : '▶';
+  if (window.subagentPanelOpen) {
     loadSubagents();
     startSubagentPolling();
   } else {
@@ -122,7 +129,7 @@ async function spawnSubagent(e) {
     const d = await api.execSubagent(task, model);
     if (d.ok) {
       toast('✅ 子代理完成 (' + model + ', ' + d.elapsed + 's)');
-      if (subagentPanelOpen) loadSubagents();
+      if (window.subagentPanelOpen) loadSubagents();
     } else {
       toast('子代理失败: ' + (d.error || d.message), true);
     }
@@ -148,3 +155,13 @@ async function authSubagent(e) {
   }
   btn.disabled = false; btn.textContent = '🔑 授权';
 }
+
+// ── ES Module exports ──
+export { loadSubagents, startSubagentPolling, toggleSubagentPanel, spawnSubagent, authSubagent };
+
+// ── Window bridge ──
+window.loadSubagents = loadSubagents;
+window.startSubagentPolling = startSubagentPolling;
+window.toggleSubagentPanel = toggleSubagentPanel;
+window.spawnSubagent = spawnSubagent;
+window.authSubagent = authSubagent;

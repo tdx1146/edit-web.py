@@ -1,7 +1,17 @@
-# utils/version.py — 版本号常量
-# 这是版本号的唯一数据源。所有地方从此读取。
+"""轻如烟编辑器 — 版本号唯一数据源"""
 
-VERSION = "v4.2"
-VERSION_DATE = "2026-06-28"
-VERSION_FULL = f"轻如烟 {VERSION} - {VERSION_DATE}"
-DELIVER = True
+VERSION = "v5.0"
+VERSION_DATE = "2026-07-01"
+VERSION_TAG = "自由王国 (Freedom First)"
+VERSION_FULL = f"{VERSION}「{VERSION_TAG}」— {VERSION_DATE}"
+
+
+def get_version():
+    """返回版本字典，供 /api/version 端点使用"""
+    return {
+        "version": VERSION,
+        "date": VERSION_DATE,
+        "tag": VERSION_TAG,
+        "full": VERSION_FULL,
+    }
+EOF

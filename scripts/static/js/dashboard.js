@@ -1,3 +1,6 @@
+// ── ES Module imports ──
+import { CL, api, updateCachePct } from './core.js';
+
 // dashboard.js — 引导文件，等所有依赖就绪后渲染组件
 
 (function boot() {

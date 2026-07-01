@@ -1,3 +1,7 @@
+// ── ES Module imports ──
+import { CL, api, escapeHtml, updateCachePct, store } from './core.js';
+import { renderPage } from './render.js';
+
 // components.js — 轻如烟 UI 组件（每位组件只写自己的 DOM 容器）
 // 通过 CL.register() 注册，不污染全局作用域
 
@@ -272,3 +276,13 @@ function toggleBacklog() {
     }).catch(function() { panel.innerHTML = '<div class="cl-error">\u52A0\u8F7D\u5931\u8D25</div>'; });
   }
 }
+
+// ── ES Module exports ──
+export { shortKey, fmtTimeShort, pad2, toggleDigestHistory, toggleBacklog };
+
+// ── Window bridge ──
+window.shortKey = shortKey;
+window.fmtTimeShort = fmtTimeShort;
+window.pad2 = pad2;
+window.toggleDigestHistory = toggleDigestHistory;
+window.toggleBacklog = toggleBacklog;
