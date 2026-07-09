@@ -11,7 +11,44 @@
   el.textContent = (isErr ? '❌ ' : '✅ ') + msg;
   el.className = 'toast show';
   setTimeout(() => el.className = 'toast', 3500);
-}</script>
+}
+function togglePurposeDropdown(e) {
+  e.stopPropagation();
+  var el = document.getElementById('purpose-dropdown-content');
+  if (el.style.display === 'none' || el.style.display === '') {
+    var btn = e.currentTarget;
+    var rect = btn.getBoundingClientRect();
+    el.style.top = (rect.bottom + 4) + 'px';
+    el.style.display = 'block';
+    document.addEventListener('click', function _close(e) {
+      if (!el.contains(e.target) && e.target.id !== 'purpose-toggle-btn') {
+        el.style.display = 'none';
+        document.removeEventListener('click', _close);
+      }
+    });
+  } else {
+    el.style.display = 'none';
+  }
+}
+function toggleDropdown(e, contentId) {
+  e.stopPropagation();
+  var el = document.getElementById(contentId);
+  if (el.style.display === 'none' || el.style.display === '') {
+    var btn = e.currentTarget;
+    var rect = btn.getBoundingClientRect();
+    el.style.top = (rect.bottom + 4) + 'px';
+    el.style.display = 'block';
+    document.addEventListener('click', function _close(e) {
+      if (!el.contains(e.target) && e.target.id !== contentId.replace('-content','-btn')) {
+        el.style.display = 'none';
+        document.removeEventListener('click', _close);
+      }
+    });
+  } else {
+    el.style.display = 'none';
+  }
+}
+</script>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
 </head>
 <body>
@@ -42,18 +79,44 @@
     <span id="sys-health" style="cursor:help;display:inline-flex;align-items:center;gap:3px" title="系统自动化：hooks、cron、contextWindow">⚙️ 系统: <span style="color:#8b949e">--</span></span>
     <span id="secretary-indicator" style="cursor:help;display:inline-flex;align-items:center;gap:3px" title="小秘书静默陪伴：文件变更追踪">🔍 秘书: <span id="secretary-count" style="color:#8b949e">0</span></span>
     <button class="btn" style="font-size:10px;padding:1px 5px;background:transparent;border:1px solid #f0c040;color:#f0c040" onclick="openReminderDialog()" title="提醒系统 - 记下要做的事">📋</button>
-    <button class="btn" style="font-size:10px;padding:1px 5px;background:transparent;border:1px solid #30363d;color:#8b949e" onclick="toggleMemoryFile()" title="打开记忆文件，直接读写轮感">📂</button>
   </div>
 
   <!-- 🌫️ 系统状态栏（只显示真数据） -->
-  <div id="digest-skill-bar" style="font-size:11px;color:#8b949e;text-align:center;margin:-6px 0 10px 0;padding:2px 10px;background:#161b22;border-radius:6px;border:1px solid #21262d;display:flex;align-items:center;justify-content:center;gap:12px">
-    <button id="ds-digest-btn" onclick="toggleDigestHistory()" style="cursor:pointer;background:none;border:none;color:inherit;font-size:11px;padding:0;display:inline-flex;align-items:center;gap:3px" title="点击查看消化历史"><span id="ds-digest-time" style="color:#8b949e">🌫️ --</span> <span style="font-size:9px;color:#58a6ff">▼</span></button>
+  <!-- ── 系统监控栏第一行：Agent OS 核心组件状态 ── -->
+  <div id="sys-mon-bar" style="font-size:11px;color:#8b949e;text-align:center;margin:-6px 0 4px 0;padding:2px 10px;background:#0d1117;border:1px solid #21262d;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap">
+    <span style="font-size:9px;color:#30363d;margin-right:2px">⚙️ 系统</span>
+    <span style="position:relative;display:inline-flex;align-items:center">
+      <button id="purpose-toggle-btn" onclick="togglePurposeDropdown(event)" 
+        style="cursor:pointer;background:none;border:none;color:#d29922;font-size:11px;padding:2px 4px;display:inline-flex;align-items:center;gap:2px" 
+        title="点击查看目的树">🎯 <span style="font-size:9px;color:#58a6ff">▼</span></button>
+      <div id="purpose-dropdown-content" style="display:none;position:fixed;top:50px;left:50%;transform:translateX(-50%);width:360px;max-width:90vw;background:#161b22;border:1px solid #30363d;border-radius:8px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-height:400px;overflow-y:auto;font-size:12px"></div>
+    </span>
+    <span style="position:relative;display:inline-flex;align-items:center">
+      <button id="monument-toggle-btn" onclick="toggleDropdown(event, 'monument-dropdown-content')" 
+        style="cursor:pointer;background:none;border:none;color:#f0883e;font-size:11px;padding:2px 4px;display:inline-flex;align-items:center;gap:2px"
+        title="点击查看丰碑库">🏛️ <span style="font-size:9px;color:#58a6ff">▼</span></button>
+      <div id="monument-dropdown-content" style="display:none;position:fixed;top:50px;left:50%;transform:translateX(-50%);width:380px;max-width:90vw;background:#161b22;border:1px solid #30363d;border-radius:8px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-height:400px;overflow-y:auto;font-size:12px"></div>
+    </span>
+    <span id="status-zanjian" style="display:inline-flex;align-items:center;gap:2px;cursor:help;font-size:11px" title="玄鉴守护进程">🛡️ <span style="color:#8b949e">--</span></span>
+    <span id="status-scheduler" style="display:inline-flex;align-items:center;gap:2px;cursor:help;font-size:11px" title="统一定时调度器">🧭 <span style="color:#8b949e">--</span></span>
+    <span style="position:relative;display:inline-flex;align-items:center">
+      <button id="snapshot-toggle-btn" onclick="toggleDropdown(event, 'snapshot-dropdown-content')" 
+        style="cursor:pointer;background:none;border:none;color:#58a6ff;font-size:11px;padding:2px 4px;display:inline-flex;align-items:center;gap:2px"
+        title="点击查看历史快照">📸 <span id="snapshot-summary" style="color:#8b949e">--</span> <span style="font-size:9px;color:#58a6ff">▼</span></button>
+      <div id="snapshot-dropdown-content" style="display:none;position:fixed;top:50px;left:50%;transform:translateX(-50%);width:420px;max-width:90vw;background:#161b22;border:1px solid #30363d;border-radius:8px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-height:400px;overflow-y:auto;font-size:12px"></div>
+    </span>
+  </div>
+
+  <!-- ── 系统监控栏第二行：消化/断言/插件/思考/待办 ── -->
+  <div id="digest-skill-bar" style="font-size:11px;color:#8b949e;text-align:center;margin:0 0 10px 0;padding:2px 10px;background:#161b22;border-radius:6px;border:1px solid #21262d;display:flex;align-items:center;justify-content:center;gap:12px">
     <span id="ds-pending" title="待升格断言数">⏳ <span style="color:#8b949e">--</span></span>
     <span id="ds-assertions" title="facts.dict.md 总断言数">💡 <span style="color:#8b949e">--</span></span>
     <span id="ds-skill-count" title="SKILL 数量">📦 <span style="color:#8b949e">--</span></span>
     <span id="ds-plugin-status" title="行为强制插件状态">🔌 <span id="ds-plugin-val">?</span></span>
     <span id="ds-thinking-status" title="思考模式状态：off/medium/high">🧠 <span id="ds-thinking-val">?</span></span>
     <button id="ds-backlog-btn" onclick="toggleBacklog()" style="cursor:pointer;background:none;border:none;color:inherit;font-size:11px;padding:0;display:inline-flex;align-items:center;gap:3px" title="待办清单">📋 <span id="ds-backlog-count" style="color:#d29922">0</span></button>
+    <button id="ds-digest-btn" onclick="toggleDigestHistory()" style="cursor:pointer;background:none;border:none;color:inherit;font-size:11px;padding:0;display:inline-flex;align-items:center;gap:3px" title="点击查看消化历史"><span id="ds-digest-time" style="color:#8b949e">🌫️ --</span> <span style="font-size:9px;color:#58a6ff">▼</span></button>
+    <button class="btn" style="font-size:10px;padding:1px 5px;background:transparent;border:1px solid #30363d;color:#8b949e" onclick="toggleMemoryFile()" title="打开记忆文件，直接读写轮感">📂</button>
   </div>
   <!-- 消化历史详情（默认隐藏） -->
   <div id="ds-digest-history" style="display:none;font-size:10px;color:#8b949e;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin:-8px 0 10px 0;max-height:260px;overflow-y:auto"></div>
@@ -208,7 +271,20 @@
   </div>
   <div class="toast" id="toast"></div>
 </div>
-<script type="module" src="/static/js/app.js"></script>
+<script src="/static/js/core.js?v=20260613" defer></script>
+<script src="/static/js/app.js?v=20260613" defer></script>
+<script src="/static/js/components.js?v=20260613" defer></script>
+<script src="/static/js/dashboard.js?v=20260613" defer></script>
+<script src="/static/js/render.js?v=20260613" defer></script>
+<script src="/static/js/subagent.js?v=20260613" defer></script>
+<script src="/static/js/file-browser.js?v=20260613" defer></script>
+<script src="/static/js/editor.js?v=20260613" defer></script>
+<script src="/static/js/momo.js?v=20260613" defer></script>
+<script src="/static/js/awake.js?v=20260613" defer></script>
+<script src="/static/js/purpose-display.js?v=20260709" defer></script>
+<script src="/static/js/monument-display.js?v=20260709" defer></script>
+<script src="/static/js/status-display.js?v=20260709" defer></script>
+<script defer src="/static/js/snapshot-display.js?v=20260709"></script>
 
 <!-- 📂 记忆管道 遮罩 -->
 <div id="memfile-backdrop" onclick="closeMemFile()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);zIndex:1000"></div>
@@ -233,6 +309,6 @@
   </div>
 </div>
 
-<!-- cache-monitor.js imported via app.js → removed individual script tag -->
+<script src="/static/js/cache-monitor.js?v=20260622" defer></script>
 </body>
 </html>

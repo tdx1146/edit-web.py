@@ -141,6 +141,10 @@ if BROWSE_ROOT and not os.access(BROWSE_ROOT, os.R_OK):
     BROWSE_ROOT = os.path.dirname(SCRIPT_DIR)
 init_light_smoke_paths(LIGHT_SMOKE_DIR, ALL_AUTO_DIR, BROWSE_ROOT)
 
+# 子代理历史日志路径
+EXEC_SUBAGENT_HISTORY = os.path.join(LIGHT_SMOKE_DIR, 'memory', 'subagent-history.log')
+EXEC_SUBAGENT_WORKDIR = '/tmp/subagent-work'
+
 # 3. 所有端口来自 env > editor-config.json > openclaw.json（无数字后备）
 def _resolve_int(key, cfg_key=None):
     """解析整数配置：env → config.json → openclaw.json"""
@@ -218,6 +222,11 @@ if _config_errors:
     sys.exit(1)
 else:
     print('[轻如烟] ✅ 配置全部就绪', file=sys.stderr)
+    _env_found = 'GATEWAY_PORT' in os.environ
+    _cfg_found = _cfg('GATEWAY_PORT') is not None
+    _oc_found = config_get(CONFIG, 'gateway.port') is not None
+    print(f"[轻如烟]   端口来源: GATEWAY_PORT来自 env={_env_found} config={_cfg_found} openclaw={_oc_found}", file=sys.stderr)
+    print(f"[轻如烟]   GATEWAY_PORT值: {GATEWAY_PORT}", file=sys.stderr)
 
 
 # ── Inject helper ────────────────────────────────────────────────────────────
@@ -477,6 +486,17 @@ def _thinking_status():
 def _system_health():
     """system health: 已迁移到 utils/status_reports"""
     return _system_health_impl(path('CONFIG'))
+def _secretary_log():
+    """秘书观察日志（返回dict，供批量接口与handle_secretary_log共用）"""
+    log_path = os.path.join(LIGHT_SMOKE_DIR, 'memory', '\u79d8\u4e66\u89c2\u5bdf.log')
+    try:
+        with open(log_path, encoding='utf-8') as f:
+            lines = f.readlines()
+        recent = lines[-10:] if len(lines) > 10 else lines
+        return {"ok": True, "total": len(lines), "recent": [l.strip() for l in recent]}
+    except:
+        return {"ok": True, "total": 0, "recent": []}
+
 def _secretary_analyze_save(path, new_content, old_content):
     """秘书分析：已迁移到 utils/secretary"""
     return secretary_analyze_save(path, new_content, old_content, LIGHT_SMOKE_DIR)
@@ -502,8 +522,15 @@ def _search_backups(query, limit=5, only_user=True):
     """搜索备份：已迁移到 utils/status_reports"""
     return _search_backups_impl(query, limit, only_user, BACKUP_DIR, strip_metadata, lambda: get_session_info())
 def _momo_auto_save_loop():
-    """自动存档：已迁移到 utils.momo"""
-    _momo_auto_save_impl(MOMO_DIR, LIGHT_SMOKE_DIR, ALL_AUTO_DIR)
+    """
+    自动存档：已迁移到 task_scheduler.py（统一调度器）
+    
+    原 30 分钟后台线程现已由 Agent OS 调度器接管。
+    见: /vol1/@team/qh团队/QH/AI专用/Agent OS/iso-sand/src/task_scheduler.py
+    """
+    import sys
+    print("[⏰ 自动存档] auto-save 已迁移至调度器，此调用被跳过",
+          file=sys.stderr)
 def _load_night_questions():
     """加载守夜问题：已迁移到 utils/reminder"""
     return _load_night_questions_impl(os.path.dirname(__file__))
@@ -567,9 +594,47 @@ for _hmod in (system_handler, session_handler, inject_handler,
               awake_handler, momo_handler):
     _hmod._M = _mod
 
+
+# ── 事件队列（供调度器写入、前端轮询读取） ──
+import threading as _event_threading
+_event_queue = []  # list of dicts
+_event_queue_lock = _event_threading.Lock()
+_event_counter = 0
+_event_queue_max = 200  # 最多保留 200 条
+
+
+def push_event(event_type, summary):
+    """向事件队列推一条事件（线程安全）"""
+    global _event_counter, _event_queue, _event_queue_lock
+    with _event_queue_lock:
+        _event_counter += 1
+        _event_queue.append({
+            "id": _event_counter,
+            "type": event_type,
+            "summary": summary,
+            "time": __import__('datetime').datetime.now().isoformat()
+        })
+        # 限制队列长度
+        if len(_event_queue) > _event_queue_max:
+            _event_queue = _event_queue[-_event_queue_max:]
+
+
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+        # ── 事件队列轮询（GET /api/events）──
+        if self.path.startswith('/api/events'):
+            # 可选参数 ?since=事件ID，只返回新事件
+            since = 0
+            if '?since=' in self.path:
+                try:
+                    since = int(self.path.split('?since=')[1].split('&')[0])
+                except:
+                    pass
+            with _event_queue_lock:
+                new_events = [e for e in _event_queue if e['id'] > since]
+            self._send_json(200, {"ok": True, "events": new_events, "latest": _event_counter})
+            return
         try:
             _router.get(self)
         except Exception as _e:
@@ -580,6 +645,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/api/ping':
             self._send_json(200, {"ok": True, "identity": "qh", "gateway_port": GATEWAY_PORT, "time": time.time(), "host": socket.gethostname()})
+            return
+        # ── 事件推送（POST /api/push-event，供调度器调用）──
+        if self.path == '/api/push-event':
+            import json
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length)
+            try:
+                data = json.loads(body)
+                push_event(data.get('type', 'info'), data.get('summary', ''))
+                self._send_json(200, {"ok": True})
+            except Exception as e:
+                self._send_json(200, {"ok": False, "error": str(e)})
             return
         try:
             _router.post(self)
@@ -659,8 +736,9 @@ _CERT_FILE = os.path.join(_THIS_DIR, 'cert.pem')
 _KEY_FILE = os.path.join(_THIS_DIR, 'key.pem')
 _USE_HTTPS = _HAS_SSL and os.path.exists(_CERT_FILE) and os.path.exists(_KEY_FILE)
 
-# 🚧 双轨过渡：可替换为 start_momo_auto_save(MOMO_DIR, LIGHT_SMOKE_DIR, ALL_AUTO_DIR)
-_momo_auto_save_loop()
+# ✅ auto-save 已迁移至 Agent OS 统一调度器
+#    见: src/task_scheduler.py 中的 momo_auto_save 任务
+# _momo_auto_save_loop()  # 已停用 — 不再启动后台线程
 
 # HTTP server
 server = V6Server(("::", EDITOR_PORT), Handler)
@@ -699,6 +777,16 @@ print(f"   Timeout: {os.environ.get('INJECT_TIMEOUT', '60')}s", file=sys.stderr)
 def _promote_pending_assertions():
     """断言提升器：已迁移到 utils/status_reports"""
     return _promote_pending_assertions_impl(LIGHT_SMOKE_DIR, path('DIGEST_OUT'))
+
+# ── 事件总线桥接（读取操作日志 → 推送到前端） ──
+try:
+    from handlers.event_bus_handler import set_push_event_callback, start_polling
+    set_push_event_callback(push_event)
+    start_polling()
+    print("  [事件总线] 已启动，轮询间隔 5 秒")
+except Exception as e:
+    print(f"  [事件总线] 启动失败: {e}")
+
 try:
     server.serve_forever()
 except KeyboardInterrupt:

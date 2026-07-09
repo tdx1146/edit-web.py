@@ -1,7 +1,5 @@
 // ── ES Module imports ──
-import { api, escapeHtml, toast } from './core.js';
 // window.subagentPanelOpen is managed via window bridge (mutable shared state)
-import './render.js';
 
 var subagentPollTimer = null;
 
@@ -157,7 +155,6 @@ async function authSubagent(e) {
 }
 
 // ── ES Module exports ──
-export { loadSubagents, startSubagentPolling, toggleSubagentPanel, spawnSubagent, authSubagent };
 
 // ── Window bridge ──
 window.loadSubagents = loadSubagents;

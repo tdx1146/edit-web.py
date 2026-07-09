@@ -49,8 +49,8 @@ const api = {
   memoryFile:    (name, content) => content ? api.post('/api/memory-file', {name, content}) : api.get('/api/memory-file?name=' + encodeURIComponent(name)),
   reminders:     () => api.get('/api/reminders'),
   remindersAdd:  (t, a) => api.post('/api/reminders', {text: t, assignee: a}),
-  remindersDone: (i) => api.post('/api/reminders', {done: i}),
-  remindersClearDone: () => api.post('/api/reminders', {clear_done: true}),
+  remindersDone: (i) => api.post('/api/reminders', {action: 'done', id: i}),
+  remindersClearDone: () => api.post('/api/reminders', {action: 'clear_done'}),
   momo:          (s, extra) => api.post('/api/momo', Object.assign({sub_action: s}, extra)),
   systemHealth:  () => api.get('/api/system-health'),
   secretaryLog:  () => api.get('/api/secretary-log'),
@@ -176,9 +176,13 @@ setInterval(updateCachePct, 20000);
 // 首次渲染由 dashboard.js boot 结束后触发
 
 
-// ── 🌀 自动轮询：每3秒检查新消息 ──
+// ── 🌀 自动轮询：每15秒检查新消息（原3秒导致选择中断+背景流量） ──
 var _lastPairCount = 0;
 var _pollTimer = setInterval(async function() {
+  // 页面不可见时不轮询
+  if (document.hidden) return;
+  // 用户正在选中文本时不轮询
+  if (window.getSelection && window.getSelection().toString()) return;
   // 🔧 修复：编辑面板打开时不刷新 pairs，防止正在编辑时 store.pairs 被覆盖
   if (document.getElementById('edit-panel')) return;
   try {
@@ -209,8 +213,19 @@ var _pollTimer = setInterval(async function() {
         }
       }
     }
+    // ── 事件通知检查（合并到消息轮询中）──
+    var evR = await fetch("/api/events?since=" + (window._lastEventId || 0));
+    var evD = await evR.json();
+    if (evD.ok && evD.events && evD.events.length > 0) {
+      window._lastEventId = evD.latest;
+      for (var i = 0; i < evD.events.length; i++) {
+        var evt = evD.events[i];
+        var isErr = (evt.type === 'error' || evt.type === 'anomaly');
+        toast('[🔔 ' + evt.type + '] ' + evt.summary, isErr);
+      }
+    }
   } catch(e) {}
-}, 3000);
+}, 15000);
 
 // ── 工具函数 ────────────────────────────────────────────────────────────────
 function fmtNum(n) {
@@ -372,9 +387,3 @@ window._renderSentCache = _renderSentCache;
 window.CL = CL;
 
 // ── ES Module exports ──
-export {
-  store, storeSet, api, renderMarkdown, toggleCachePanel,
-  updateContextDisplay, updateCachePct, fmtNum, escapeHtml,
-  toast, refresh, _renderSentCache, sentRetry, sentEdit,
-  CL
-};

@@ -36,6 +36,9 @@ from handlers.inject_handler import (
     handle_abort, handle_restart_http,
 )
 from handlers.momo_handler import handle_momo, handle_pet_me
+from handlers import purpose_handler
+from handlers import monument_handler, status_handler
+from handlers import snapshot_handler
 
 def get(handler):
     cp = handler.path.split('?')[0]
@@ -88,6 +91,24 @@ def get(handler):
             fn = g(f)
             if fn: return st(fn())
     
+    # ── 批量状态接口（合并 7×20s 轮询，减少前端 7 个独立定时器） ──
+    if cp == '/api/batch':
+        data = {}
+        entries = [
+            ('listSessions', 'list_all_sessions'),
+            ('digestionSkill', '_digestion_skill_status'),
+            ('systemHealth', '_system_health'),
+            ('backupStale', '_backup_stale_status'),
+            ('secretaryLog', '_secretary_log'),
+            ('weaponryToggle', '_weaponry_toggle_status'),
+            ('thinkingStatus', '_thinking_status'),
+        ]
+        for key, func_name in entries:
+            fn = g(func_name)
+            if fn:
+                data[key] = fn()
+        return st({"ok": True, "data": data})
+
     if cp.startswith('/api/tb-files'): return handle_tb_files(handler)
     if cp.startswith('/api/tb-read-file'): return handle_tb_read_file(handler)
     if cp.startswith('/api/tb-save-file'): return handle_tb_save_file(handler)
@@ -97,6 +118,22 @@ def get(handler):
     if cp.startswith('/api/list-files'): return handle_list_files(handler)
     if cp.startswith('/api/browse-dirs'): return handle_browse_dirs(handler)
     if cp.startswith('/api/encrypt'): return handle_encrypt(handler)
+    # ── 目的树接口 ──
+    if cp == '/api/purpose':
+        return st({"ok": True, "data": purpose_handler.get_purpose_data()})
+
+    # ── 丰碑库接口 ──
+    if cp == '/api/monument':
+        return st({"ok": True, "data": monument_handler.get_monument_data()})
+
+    # ── 系统状态接口 ──
+    if cp == '/api/system-status':
+        return st({"ok": True, "data": status_handler.get_system_status()})
+
+    # ── 快照状态接口 ──
+    if cp == '/api/snapshot':
+        return st({"ok": True, "data": snapshot_handler.get_snapshot_data()})
+
     if cp == '/api/memory-files': return handle_memory_file_list(handler)
     if cp.startswith('/api/memory-file'): return handle_memory_file_get(handler)
     

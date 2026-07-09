@@ -329,6 +329,19 @@ body { scroll-behavior: auto; }
 }
 .tts-indicator.show { display: inline; }
 
+/* 目的树下拉菜单 */
+#purpose-dropdown-content {
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
+}
+#purpose-dropdown-content::-webkit-scrollbar {
+  width: 4px;
+}
+#purpose-dropdown-content::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 2px;
+}
+
 /* truncation style */
 .truncated-msg { border: 2px solid #58a6ff; }
 .truncated-user { border-left-color: #58a6ff !important; background: #1c2a40 !important; }

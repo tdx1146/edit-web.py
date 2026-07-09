@@ -54,9 +54,8 @@ def add_reminder(text, light_smoke_dir, assignee="", trigger_hint=""):
 
 
 def secretary_remind(light_smoke_dir):
-    """📋 返回当前未完成的提醒摘要"""
-    reminders = load_reminders(light_smoke_dir)
-    return [r for r in reminders if not r.get('done')]
+    """📋 返回全部提醒（不过滤 done 状态，前端自行区分）"""
+    return load_reminders(light_smoke_dir)
 
 
 # ── 🔍 文件变更分析 ─────────────────────────────────────────────────

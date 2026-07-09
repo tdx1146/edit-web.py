@@ -1,5 +1,4 @@
 // ── ES Module imports ──
-import { api, escapeHtml, refresh } from './core.js';
 
 function momo() {
   const panel = document.getElementById('momo-panel');
@@ -340,13 +339,6 @@ async function momoSendFeeling() {
 }
 
 // ── ES Module exports ──
-export {
-  momo, momoPack, momoStatus, restartHTTPServer, trimSession,
-  toggleWeaponry, petMe, momoInjectFeeling, momoRitual,
-  momoListBackups, momoSearchBackups, momoDoSearch,
-  momoCopyToFeeling, momoSendFeeling, momoIndexReport,
-  momoRestoreBackup
-};
 
 // ── Window bridge ──
 window.momo = momo;

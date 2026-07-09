@@ -1,6 +1,4 @@
 // ── ES Module imports ──
-import { store, api, escapeHtml, toast, refresh, _renderSentCache } from './core.js';
-import { renderPage } from './render.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   _renderSentCache();
@@ -373,13 +371,6 @@ function hideAwake() {
 }
 
 // ── ES Module exports ──
-export {
-  toggleDialog, abortThinking, awakePick, awakeRefreshList,
-  awakeRenderList, awakeToggleBank, awakeFilter, awakeSelect,
-  awakeEditBank, awakeSaveBank, awakeSendNoTrunc, awakeSendTrunc,
-  removeOptimisticMessage, resendLastMessage, _awakeDoSend,
-  awakeSave, hideAwake
-};
 
 // ── Window bridge ──
 window.toggleDialog = toggleDialog;

@@ -178,12 +178,14 @@ def handle_reminders(handler):
                 _save_reminders = g('_save_reminders')
                 reminders = _load_reminders()
                 rid = data.get('id')
+                found = None
                 for r in reminders:
                     if r.get('id') == rid:
-                        r['done'] = True
+                        r['done'] = not r.get('done', False)  # toggle
+                        found = r
                         break
                 _save_reminders(reminders)
-                handler._send_json(200, {"ok": True})
+                handler._send_json(200, {"ok": True, "done": found['done'] if found else False})
             elif action == 'clear_done':
                 _load_reminders = g('_load_reminders')
                 _save_reminders = g('_save_reminders')

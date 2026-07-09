@@ -4,14 +4,4 @@
  */
 
 // ── ES Module 入口 — 导入所有模块，保证加载顺序 ──
-import './core.js';
-import './render.js';
-import './components.js';
-import './dashboard.js';
-import './editor.js';
-import './awake.js';
-import './momo.js';
-import './file-browser.js';
-import './subagent.js';
-import './cache-monitor.js';
 

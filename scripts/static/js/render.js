@@ -1,6 +1,5 @@
 
 // ── ES Module imports ──
-import { store, api, renderMarkdown, escapeHtml, toast, fmtNum } from './core.js';
 
 // ── merged from cache.js ──
 // cache.js — 展开的缓存面板（精简版，不碰 cache-summary，只写 cache-overview）
@@ -143,9 +142,10 @@ function openReminderDialog() {
       if (d.ok && d.reminders && d.reminders.length > 0) {
         d.reminders.forEach(r => {
           const a = r.assignee ? ' [' + r.assignee + ']' : '';
+          const done = r.done;
           html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #21262d">';
-          html += '<button onclick="doneReminder(' + r.id + ')" style="background:transparent;border:1px solid #30363d;border-radius:3px;padding:2px 6px;color:#8b949e;cursor:pointer;font-size:10px">✓</button>';
-          html += '<span style="flex:1;color:#c9d1d9">' + r.text + '</span>';
+          html += '<button onclick="doneReminder(' + r.id + ')" style="background:transparent;border:1px solid #30363d;border-radius:3px;padding:2px 6px;color:' + (done ? '#58a6ff' : '#8b949e') + ';cursor:pointer;font-size:10px">' + (done ? '✅' : '✓') + '</button>';
+          html += '<span style="flex:1;color:' + (done ? '#484f58' : '#c9d1d9') + ';text-decoration:' + (done ? 'line-through' : 'none') + '">' + r.text + '</span>';
           html += '<span style="color:#8b949e;font-size:10px">' + a + '</span>';
           html += '<span style="color:#484f58;font-size:10px">' + (r.created || '') + '</span>';
           html += '</div>';
@@ -659,20 +659,6 @@ function renderPage() {
 let subagentPanelOpen = window.subagentPanelOpen = false;
 
 // ── ES Module exports ──
-export {
-  loadFactsLightbox, closeFactsOverlay,
-  ttsReadBtn, openReminderDialog, closeReminderDialog,
-  addReminder, doneReminder, clearDoneReminders,
-  enableMobileResize, setupPagination, renderPagination,
-  goToPage, jumpPage, updatePaginationState,
-  toggleMemoryFile, closeMemFile, loadMemFileList,
-  renderMemFileList, loadMemFile, saveMemoryFile,
-  rpcMessagesToPairs, fmtTime, fmtTimeFull,
-  renderMessagesHtml, renderCountText, pairHash, renderPage,
-  ttsRate, _ttsAudio, _lastRenderHash,
-  tbRootPath, tbCurrentPath, tbCurrentName,
-  tbCurrentBrowsePath, tbMovePath, _memFileList, subagentPanelOpen
-};
 
 // ── Window bridge (for onclick handlers in HTML and cross-file globals) ──
 window.loadFactsLightbox = loadFactsLightbox;

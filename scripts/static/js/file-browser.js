@@ -1,5 +1,4 @@
 // ── ES Module imports ──
-import { api } from './core.js';
 
 function tbToggleBrowser() {
   var browser = document.getElementById('tb-browser');
@@ -472,12 +471,6 @@ async function tbConfirmMove(source, targetDir) {
 }
 
 // ── ES Module exports ──
-export {
-  tbToggleBrowser, tbLoadTree, addTreeEl, tbHandleTreeClick,
-  tbUpdatePathDisplay, tbTreeClose, tbSelectFile, tbSaveFile,
-  tbCopyPath, tbShowPrompt, tbNewFolder, tbNewFile,
-  tbDelete, tbRename, tbStartMove, tbConfirmMove
-};
 
 // ── Window bridge ──
 window.tbToggleBrowser = tbToggleBrowser;

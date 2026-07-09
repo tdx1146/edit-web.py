@@ -86,8 +86,7 @@ const config = readConfig(openclawHome);
 const GATEWAY_PORT = parseInt(
   process.env.GATEWAY_PORT ||
   (config && getConfig(config.data, 'gateway.port')) ||
-  '19107',
-  10
+    10
 );
 
 // Token: env var > config > fallback

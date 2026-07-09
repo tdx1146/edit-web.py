@@ -1,5 +1,4 @@
 // ── ES Module imports ──
-import { api } from './core.js';
 
 /**
  * cache-monitor.js — 缓存命中率监控面板（完全重写 v2）
@@ -142,7 +141,6 @@ function _fmtToken(n) {
 }
 
 // ── ES Module exports ──
-export { loadCacheStats };
 
 // ── Window bridge ──
 window.loadCacheStats = loadCacheStats;

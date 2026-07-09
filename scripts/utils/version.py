@@ -3,7 +3,8 @@
 VERSION = "v5.0"
 VERSION_DATE = "2026-07-01"
 VERSION_TAG = "自由王国 (Freedom First)"
-VERSION_FULL = f"{VERSION}「{VERSION_TAG}」— {VERSION_DATE}"
+VERSION_FULL = f"轻如烟 {VERSION}「{VERSION_TAG}」— {VERSION_DATE}"
+DELIVER = True
 
 
 def get_version():
@@ -12,6 +13,6 @@ def get_version():
         "version": VERSION,
         "date": VERSION_DATE,
         "tag": VERSION_TAG,
-        "full": VERSION_FULL,
+        "full": f"轻如烟 {VERSION} - {VERSION_DATE}",
+        "deliver": DELIVER,
     }
-EOF

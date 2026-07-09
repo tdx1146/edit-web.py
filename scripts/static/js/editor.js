@@ -1,6 +1,4 @@
 // ── ES Module imports ──
-import { store, api, escapeHtml, toast, refresh } from './core.js';
-import { renderPage } from './render.js';
 
 // 确保 pairs 引用 store.pairs（防止缓存导致变量未定义）
 var pairs = store.pairs;
@@ -234,7 +232,6 @@ async function saveEditWithApproval(pairIdx) {
 }
 
 // ── ES Module exports ──
-export { openEdit, cancelEdit, toggleNotice, saveEdit, saveEditWithApproval };
 
 // ── Window bridge ──
 window.openEdit = openEdit;

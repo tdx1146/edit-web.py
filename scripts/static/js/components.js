@@ -1,6 +1,4 @@
 // ── ES Module imports ──
-import { CL, api, escapeHtml, updateCachePct, store } from './core.js';
-import { renderPage } from './render.js';
 
 // components.js — 轻如烟 UI 组件（每位组件只写自己的 DOM 容器）
 // 通过 CL.register() 注册，不污染全局作用域
@@ -30,13 +28,7 @@ CL.register('sessionSelector', {
       CL.render('sessionSelector'); 
     }).catch(function(){});
     ctx.render(ctx, ctx.el);
-    setInterval(function() {
-      // 每20秒刷新会话列表
-      api.listSessions().then(function(list) {
-        if (list) self._list = list;
-        CL.render('sessionSelector');
-      }).catch(function(){});
-    }, 20000);
+    /* 由全局批量调度器驱动（优化：合并7×20s轮询为1个批量请求） */
   },
   render: function(ctx, el) {
     var curr = ctx._current || 'agent:main:main';
@@ -113,8 +105,23 @@ function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 CL.register('digestBar', {
   container: 'ds-digest-time',
   parent: 'digest-skill-bar',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
+    // 优先使用全局批量缓存
+    var _bd = window._batchData && window._batchData.digestionSkill;
+    if (_bd) {
+      var d = _bd;
+      var lt = (d.last_digest_time || '').replace('\u6d88\u5316\u5faa\u73af', '').replace(/\d{4}-\d{2}-\d{2} /, '').trim();
+      if (lt.indexOf('|') > 0) lt = lt.split('|')[0].trim();
+      el.innerHTML = '\uD83C\uDF2B <span class="' + (d.last_digest_time ? 'cl-success' : 'cl-muted') + '">' + lt + '</span>';
+      document.getElementById('ds-pending').innerHTML = '\u23F3 <span class="' + ((d.pending_assertions||0) > 0 ? 'cl-warn' : 'cl-muted') + '">' + (d.pending_assertions||0) + '</span>';
+      document.getElementById('ds-assertions').innerHTML = '\uD83D\uDCA1 <span class="cl-success">' + (d.total_assertions||0) + '</span>';
+      var se = document.getElementById('ds-skill-count');
+      if (se) se.innerHTML = '\uD83D\uDCE6 <span class="cl-success">' + (d.skill_count||0) + '</span>';
+      var pv = document.getElementById('ds-plugin-val');
+      if (pv) { pv.textContent = d.plugin_ok ? '\u2705' : '\u26A0\uFE0F'; pv.className = d.plugin_ok ? 'cl-success' : 'cl-warn'; }
+      return;
+    }
     api.digestSkill().then(function(d) {
       var lt = (d.last_digest_time || '').replace('\u6d88\u5316\u5faa\u73af', '').replace(/\d{4}-\d{2}-\d{2} /, '').trim();
       if (lt.indexOf('|') > 0) lt = lt.split('|')[0].trim();
@@ -173,11 +180,20 @@ function toggleDigestHistory() {
 CL.register('systemHealth', {
   container: 'sys-health',
   parent: 'app',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
     var val = el;
     var target = el.querySelector && el.querySelector('span');
     if (target) val = target;
+    // 优先使用全局批量缓存
+    var _bd = window._batchData && window._batchData.systemHealth;
+    if (_bd) {
+      var d = _bd;
+      var ok = d.hooks && d.hooks.enabled && d.cron && d.cron.enabled && d.context && d.context.ok;
+      val.textContent = ok ? '\u2705' : '\u26A0\uFE0F';
+      val.className = ok ? 'cl-success' : 'cl-danger';
+      return;
+    }
     api.systemHealth().then(function(d) {
       var ok = d.hooks && d.hooks.enabled && d.cron && d.cron.enabled && d.context && d.context.ok;
       val.textContent = ok ? '\u2705' : '\u26A0\uFE0F';
@@ -190,8 +206,16 @@ CL.register('systemHealth', {
 CL.register('backup', {
   container: 'backup-stale',
   parent: 'app',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
+    var _bd = window._batchData && window._batchData.backupStale;
+    if (_bd) {
+      var d = _bd;
+      if (!d.ok || d.stale === undefined) { el.textContent = '\uD83D\uDCBE ?'; return; }
+      if (d.stale) { el.textContent = '\uD83D\uDCBE \u26A0\uFE0F'; el.style.color = '#da3633'; }
+      else { el.textContent = '\uD83D\uDCBE \u2705 ' + (d.last_pack || ''); el.style.color = '#3fb950'; }
+      return;
+    }
     api.backupStale().then(function(d) {
       if (!d.ok || d.stale === undefined) { el.textContent = '\uD83D\uDCBE ?'; return; }
       if (d.stale) { el.textContent = '\uD83D\uDCBE \u26A0\uFE0F'; el.style.color = '#da3633'; }
@@ -204,8 +228,16 @@ CL.register('backup', {
 CL.register('secretary', {
   container: 'secretary-count',
   parent: 'secretary-indicator',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
+    var _bd = window._batchData && window._batchData.secretaryLog;
+    if (_bd) {
+      var d = _bd;
+      if (!d.ok) return;
+      el.textContent = d.total;
+      el.className = d.total > 0 ? 'cl-accent' : 'cl-muted';
+      return;
+    }
     api.secretaryLog().then(function(d) {
       if (!d.ok) return;
       el.textContent = d.total;
@@ -218,8 +250,15 @@ CL.register('secretary', {
 CL.register('weaponry', {
   container: 'weaponry-toggle-label',
   parent: 'app',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
+    var _bd = window._batchData && window._batchData.weaponryToggle;
+    if (_bd) {
+      var d = _bd;
+      el.textContent = d.enabled ? '\u5BF9\u7EBF\u4E2D' : '\u5DF2\u6682\u505C';
+      el.className = d.enabled ? 'cl-success' : 'cl-danger';
+      return;
+    }
     api.weaponryToggle().then(function(d) {
       el.textContent = d.enabled ? '\u5BF9\u7EBF\u4E2D' : '\u5DF2\u6682\u505C';
       el.className = d.enabled ? 'cl-success' : 'cl-danger';
@@ -231,8 +270,27 @@ CL.register('weaponry', {
 CL.register('thinking', {
   container: 'think-status',
   parent: 'think-toggle',
-  init: function(ctx) { setInterval(ctx.render, 20000); },
+  init: function(ctx) { /* 由全局批量调度器驱动 */ },
   render: function(ctx, el) {
+    var _bd = window._batchData && window._batchData.thinkingStatus;
+    if (_bd) {
+      var d = _bd;
+      var parent = document.getElementById('think-toggle');
+      var dot = document.getElementById('think-dot');
+      var dsEl = document.getElementById('ds-thinking-val');
+      if (d.thinking) {
+        el.textContent = '\u5F00';
+        if (parent) { var onStyle = parent.dataset.onStyle; if (onStyle) parent.style.cssText = onStyle; }
+        if (dot) { dot.style.background = '#da3633'; dot.style.borderColor = '#da3633'; }
+        if (dsEl) { dsEl.textContent = '\u5F00'; dsEl.className = 'cl-warn'; }
+      } else {
+        el.textContent = '\u5173';
+        if (parent) { var offStyle = parent.dataset.offStyle; if (offStyle) parent.style.cssText = offStyle; }
+        if (dot) { dot.style.background = '#30363d'; dot.style.borderColor = '#30363d'; }
+        if (dsEl) { dsEl.textContent = '\u5173'; dsEl.className = 'cl-muted'; }
+      }
+      return;
+    }
     api.thinkingStatus().then(function(d) {
       var parent = document.getElementById('think-toggle');
       var dot = document.getElementById('think-dot');
@@ -277,8 +335,42 @@ function toggleBacklog() {
   }
 }
 
+// ── 全局批量状态轮询（优化：合并 7 个独立 20s 轮询为 1 个批量请求） ──
+// 替代原本每个组件各自的 setInterval 定时器
+// 映射关系：batch data key → 组件 ID
+var _batchCompMap = {
+  'listSessions': 'sessionSelector',
+  'digestionSkill': 'digestBar',
+  'systemHealth': 'systemHealth',
+  'backupStale': 'backup',
+  'secretaryLog': 'secretary',
+  'weaponryToggle': 'weaponry',
+  'thinkingStatus': 'thinking',
+};
+
+async function batchStatusPoll() {
+  try {
+    var r = await fetch('/api/batch?t=' + Date.now());
+    var d = await r.json();
+    if (!d.ok || !d.data) return;
+    var bd = d.data;
+    window._batchData = bd;
+    // 更新 sessionSelector 的状态列表（需要同步到 ctx._list）
+    var sess = CL.get && CL.get('sessionSelector');
+    if (sess && bd.listSessions) sess._list = bd.listSessions;
+    // 渲染所有批量驱动的组件
+    for (var key in _batchCompMap) {
+      var comp = CL.get && CL.get(_batchCompMap[key]);
+      if (comp && comp.render) comp.render();
+    }
+  } catch(e) {}
+}
+// 启动全局轮询（替代原本 7 个独立 setInterval）
+setInterval(batchStatusPoll, 20000);
+// 立即执行一次
+batchStatusPoll();
+
 // ── ES Module exports ──
-export { shortKey, fmtTimeShort, pad2, toggleDigestHistory, toggleBacklog };
 
 // ── Window bridge ──
 window.shortKey = shortKey;
