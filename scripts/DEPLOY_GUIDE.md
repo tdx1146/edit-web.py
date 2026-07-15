@@ -284,3 +284,19 @@ ls -lh v5.0_deployed_*.tar.gz
 - 所有函数通过 `window.X = X` 挂在全局
 - inline `onclick` 直接调用
 - `dashboard.js` → `CL.renderAll()` 在全部组件注册后执行
+
+## Git Hooks 部署
+
+每个仓库根目录下有 `githooks/` 目录，存储了 post-commit hook 脚本。
+克隆新仓库后，执行以下命令激活 hooks：
+
+```bash
+sh install-hooks.sh
+```
+
+这会复制 `githooks/post-commit` 到 `.git/hooks/post-commit` 并加可执行权限。
+
+涉及的仓库和 hook 功能：
+- **kernel/** — git commit 后自动创建版本快照（trigger: git_commit）
+- **iso-sand/** — git commit 后通知 kernel 创建快照（trigger: iso-sand_commit）
+- **轻如烟/** — git commit 后通知 kernel 创建快照（trigger: editor_update）
