@@ -189,13 +189,13 @@ CL.register('systemHealth', {
     var _bd = window._batchData && window._batchData.systemHealth;
     if (_bd) {
       var d = _bd;
-      var ok = d.hooks && d.hooks.enabled && d.cron && d.cron.enabled && d.context && d.context.ok;
+      var ok = d.cron && d.cron.enabled && d.context && d.context.ok; // hooks可选，不影响系统健康
       val.textContent = ok ? '\u2705' : '\u26A0\uFE0F';
       val.className = ok ? 'cl-success' : 'cl-danger';
       return;
     }
     api.systemHealth().then(function(d) {
-      var ok = d.hooks && d.hooks.enabled && d.cron && d.cron.enabled && d.context && d.context.ok;
+      var ok = d.cron && d.cron.enabled && d.context && d.context.ok; // hooks可选，不影响系统健康
       val.textContent = ok ? '\u2705' : '\u26A0\uFE0F';
       val.className = ok ? 'cl-success' : 'cl-danger';
     }).catch(function(){ val.textContent = '?'; val.className = 'cl-danger'; });

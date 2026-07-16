@@ -170,8 +170,14 @@ def digestion_skill_status(light_smoke_dir, digest_out, cron_json, plugin_health
     # 📦 skill 数量（合并 ~/.pi/agent/skills + workspace/skills，按 skill 名去重）
     pi_skills = set(os.path.basename(os.path.dirname(p))
                    for p in glob.glob(os.path.expanduser("~/.pi/agent/skills/*/SKILL.md")))
+    # ws_skills: 从 workspace/hooks 的父目录下的 skills/ 查找
+    if workspace_hooks_path and os.path.isdir(os.path.dirname(workspace_hooks_path)):
+        ws_base = os.path.dirname(workspace_hooks_path)
+    else:
+        # fallback: 从本项目根目录（轻如烟/）下的 system-config/skills/
+        ws_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'system-config')
     ws_skills = set(os.path.basename(os.path.dirname(p))
-                    for p in glob.glob(os.path.join(os.path.dirname(workspace_hooks_path), 'skills', '*', 'SKILL.md')))
+                    for p in glob.glob(os.path.join(ws_base, 'skills', '*', 'SKILL.md')))
     result["skill_count"] = len(pi_skills | ws_skills)
 
     return result
@@ -341,7 +347,8 @@ def system_health(config_path):
         hooks_cfg = cfg.get("hooks", {}).get("internal", {}).get("entries", {})
         result["hooks"]["details"]["session-memory"] = hooks_cfg.get("session-memory", {}).get("enabled", False)
         result["hooks"]["details"]["command-logger"] = hooks_cfg.get("command-logger", {}).get("enabled", False)
-        result["hooks"]["enabled"] = all(result["hooks"]["details"].values())
+        # 如果 hooks 配置存在（即使部分未启用），算健康
+        result["hooks"]["enabled"] = len(hooks_cfg) > 0
     except:
         pass
     return result
