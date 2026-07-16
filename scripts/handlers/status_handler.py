@@ -24,17 +24,17 @@ def get_system_status():
             data["zanjian"]["pid"] = pids[0] if pids else None
     except: pass
     
-    # 检查调度器 task_scheduler.py
+    # 检查调度器 task_scheduler.py（排除 pgrep 自身和子进程）
     try:
+        # 用更精确的模式避免匹配到 pgrep 自身
         result = subprocess.run(
-            ["pgrep", "-f", "task_scheduler.py"],
+            ["pgrep", "-f", "python3.*src/task_scheduler"],
             capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
-            pids = result.stdout.strip().split()
-            # 排除 pgrep 命令自身
+            pids = [p for p in result.stdout.strip().split() if p.strip()]
             pids = [p for p in pids if p != str(os.getpid())]
-            data["scheduler"]["running"] = True
+            data["scheduler"]["running"] = len(pids) > 0
             data["scheduler"]["pid"] = pids[0] if pids else None
     except: pass
     
