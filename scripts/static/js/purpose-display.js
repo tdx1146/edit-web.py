@@ -79,9 +79,11 @@
         // 更新按钮上的版本号
         var btn = document.getElementById("purpose-toggle-btn");
         if (btn && d.data && d.data.version) {
+          var rawVer = d.data.version || '';
+          var shortVer = rawVer.indexOf('v') === 0 ? rawVer : 'v' + rawVer;
           btn.innerHTML =
-            '🎯 <span style="font-size:9px;color:#8b949e">v' +
-            d.data.version +
+            '🎯 <span style="font-size:9px;color:#8b949e">' +
+            shortVer +
             "</span> <span style='font-size:9px;color:#58a6ff'>▼</span>";
         }
       })

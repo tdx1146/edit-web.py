@@ -24,18 +24,29 @@ def get_system_status():
             data["zanjian"]["pid"] = pids[0] if pids else None
     except: pass
     
-    # 检查调度器 task_scheduler.py（排除 pgrep 自身和子进程）
+    # 检查调度器 task_scheduler.py
+    # ⚠️ 元凶修复 2026-07-16: pgrep 模式必须匹配真实进程 cmdline
+    # 调度器从 iso-sand/ 目录启动: `python3 src/task_scheduler.py`
+    # 也可能从别的路径启动，使用最终文件名匹配而非完整路径
     try:
-        # 用更精确的模式避免匹配到 pgrep 自身
         result = subprocess.run(
-            ["pgrep", "-f", "python3.*src/task_scheduler"],
+            ["pgrep", "-f", "task_scheduler.py"],
             capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             pids = [p for p in result.stdout.strip().split() if p.strip()]
+            # 排除 pgrep 自身（自身 PID 不可能出现在 pgrep 输出，但排除 Shell 进程）
             pids = [p for p in pids if p != str(os.getpid())]
-            data["scheduler"]["running"] = len(pids) > 0
-            data["scheduler"]["pid"] = pids[0] if pids else None
+            # 进一步验证：确保这些 PID 确实指向一个 Python 进程
+            valid_pids = []
+            for pid in pids:
+                try:
+                    cmdline = open(f'/proc/{pid}/cmdline', 'r').read().replace('\x00', ' ')
+                    if 'python' in cmdline and 'task_scheduler' in cmdline:
+                        valid_pids.append(pid)
+                except: pass
+            data["scheduler"]["running"] = len(valid_pids) > 0
+            data["scheduler"]["pid"] = valid_pids[0] if valid_pids else None
     except: pass
     
     return data
