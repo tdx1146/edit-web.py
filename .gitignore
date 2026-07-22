@@ -1,0 +1,7 @@
+*.zip
+*.tar.gz
+*.bak
+*.bak.*
+__pycache__/
+*.pyc
+.git/

@@ -1,0 +1,155 @@
+{
+  "nodes": [
+    {
+      "id": "document:AUDIT_REPORT.md",
+      "type": "document",
+      "name": "AUDIT_REPORT.md",
+      "filePath": "AUDIT_REPORT.md",
+      "language": "markdown",
+      "summary": "AUDIT_REPORT.md \u2014 markdown file",
+      "tags": [
+        "markdown",
+        "docs",
+        "document"
+      ],
+      "sizeLines": 603,
+      "fileCategory": "docs"
+    },
+    {
+      "id": "document:FRONTEND_AUDIT.md",
+      "type": "document",
+      "name": "FRONTEND_AUDIT.md",
+      "filePath": "FRONTEND_AUDIT.md",
+      "language": "markdown",
+      "summary": "FRONTEND_AUDIT.md \u2014 markdown file",
+      "tags": [
+        "markdown",
+        "docs",
+        "document"
+      ],
+      "sizeLines": 315,
+      "fileCategory": "docs"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "language": "markdown",
+      "summary": "README.md \u2014 markdown file",
+      "tags": [
+        "markdown",
+        "docs",
+        "document"
+      ],
+      "sizeLines": 168,
+      "fileCategory": "docs"
+    },
+    {
+      "id": "document:VERSION_COMPARISON.md",
+      "type": "document",
+      "name": "VERSION_COMPARISON.md",
+      "filePath": "VERSION_COMPARISON.md",
+      "language": "markdown",
+      "summary": "VERSION_COMPARISON.md \u2014 markdown file",
+      "tags": [
+        "markdown",
+        "docs",
+        "document"
+      ],
+      "sizeLines": 307,
+      "fileCategory": "docs"
+    },
+    {
+      "id": "config:editor-config.json",
+      "type": "config",
+      "name": "editor-config.json",
+      "filePath": "editor-config.json",
+      "language": "json",
+      "summary": "editor-config.json \u2014 json file",
+      "tags": [
+        "json",
+        "config",
+        "config"
+      ],
+      "sizeLines": 19,
+      "fileCategory": "config"
+    },
+    {
+      "id": "file:health-check.sh",
+      "type": "file",
+      "name": "health-check.sh",
+      "filePath": "health-check.sh",
+      "language": "shell",
+      "summary": "health-check.sh \u2014 shell file",
+      "tags": [
+        "shell",
+        "script",
+        "file"
+      ],
+      "sizeLines": 17,
+      "fileCategory": "script"
+    },
+    {
+      "id": "file:health-loop.sh",
+      "type": "file",
+      "name": "health-loop.sh",
+      "filePath": "health-loop.sh",
+      "language": "shell",
+      "summary": "health-loop.sh \u2014 shell file",
+      "tags": [
+        "shell",
+        "script",
+        "file"
+      ],
+      "sizeLines": 21,
+      "fileCategory": "script"
+    },
+    {
+      "id": "file:start-clean.sh",
+      "type": "file",
+      "name": "start-clean.sh",
+      "filePath": "start-clean.sh",
+      "language": "shell",
+      "summary": "start-clean.sh \u2014 shell file",
+      "tags": [
+        "shell",
+        "script",
+        "file"
+      ],
+      "sizeLines": 38,
+      "fileCategory": "script"
+    },
+    {
+      "id": "file:start-health-loop.sh",
+      "type": "file",
+      "name": "start-health-loop.sh",
+      "filePath": "start-health-loop.sh",
+      "language": "shell",
+      "summary": "start-health-loop.sh \u2014 shell file",
+      "tags": [
+        "shell",
+        "script",
+        "file"
+      ],
+      "sizeLines": 4,
+      "fileCategory": "script"
+    },
+    {
+      "id": "file:watchdog.sh",
+      "type": "file",
+      "name": "watchdog.sh",
+      "filePath": "watchdog.sh",
+      "language": "shell",
+      "summary": "watchdog.sh \u2014 shell file",
+      "tags": [
+        "shell",
+        "script",
+        "file"
+      ],
+      "sizeLines": 10,
+      "fileCategory": "script"
+    }
+  ],
+  "edges": []
+}
