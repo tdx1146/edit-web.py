@@ -24,18 +24,25 @@ def handle_usage_status(handler):
     except:
         pass
     
-    # 从模型配置中读取 contextWindow（作为权威值）
+    # 从 OpenClaw config 构建 provider → contextWindow 映射
     cfg_path = path('CONFIG')
-    expected_window = 1000000  # DeepSeek V4 Flash 默认 1M
+    provider_context_map = {}
     try:
         with open(cfg_path) as f:
             cfg = json.load(f)
-        for m in cfg.get("models", {}).get("providers", {}).get("DeepSeek", {}).get("models", []):
-            if m.get("id") == "deepseek-v4-flash":
-                expected_window = m.get("contextWindow", expected_window)
-                break
+        providers = cfg.get("models", {}).get("providers", {})
+        for pname, pcfg in providers.items():
+            pctx = pcfg.get("contextTokens")
+            if pctx:
+                # 该 provider 下所有模型共享这个 context window
+                for m in pcfg.get("models", []):
+                    mid = m.get("id")
+                    if mid:
+                        provider_context_map[mid] = pctx
+                # 也按 provider 名称存一份
+                provider_context_map[f"__provider:{pname}"] = pctx
     except:
-        pass
+        pass  # 配置不存在时用默认值
     
     try:
         with open(ss_path) as f:
@@ -44,7 +51,16 @@ def handle_usage_status(handler):
         sk, _ = get_session_info()
         sess = ss.get(sk, {})
         total = sess.get("totalTokens", 0)
-        limit = expected_window  # 使用模型配置值，而非 sessions.json 的 runtime 值
+        # 按优先级获取 context window
+        # 1) 当前会话 model ID 在 provider_context_map 中查
+        # 2) 当前会话 modelProvider 在 provider_context_map 中查
+        # 3) 当前会话自己的 contextTokens 字段
+        # 4) 硬编码默认 1M
+        model_id = sess.get("model", "")
+        model_provider = sess.get("modelProvider", "")
+        limit = provider_context_map.get(model_id) or \
+                provider_context_map.get(f"__provider:{model_provider}") or \
+                sess.get("contextTokens", 1000000)
         inp = sess.get("inputTokens", 0)
         out = sess.get("outputTokens", 0)
         cache = sess.get("cacheRead", 0)
@@ -236,3 +252,5 @@ def handle_weaponry_toggle(handler):
         handler._send_json(200, {"ok": True, "enabled": enable})
     except Exception as e:
         handler._send_json(200, {"ok": False, "error": str(e)})
+
+# PATCHED: contextTokens dynamic lookup 2026-07-22

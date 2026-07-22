@@ -167,7 +167,24 @@ function openReminderDialog() {
 function closeReminderDialog() {
   const el = document.getElementById('reminder-overlay');
   if (el) el.remove();
-  checkReminders();
+  checkReminders();  // 关闭弹窗后更新 badge
+}
+
+function checkReminders() {
+  api.reminders().then(function(d) {
+    var btn = document.querySelector('button[onclick="openReminderDialog()"]');
+    if (!btn) return;
+    if (d.ok && d.reminders) {
+      var pending = d.reminders.filter(function(r) { return !r.done; });
+      if (pending.length > 0) {
+        btn.innerHTML = '📋 <span style="background:#f0c040;color:#0d1117;border-radius:8px;padding:0 5px;font-size:9px;font-weight:600;margin-left:1px">' + pending.length + '</span>';
+      } else {
+        btn.innerHTML = '📋';
+      }
+    } else {
+      btn.innerHTML = '📋';
+    }
+  }).catch(function(e) { /* 静默忽略 */ });
 }
 
 function addReminder() {
