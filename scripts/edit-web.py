@@ -317,10 +317,24 @@ def set_active_session_key(key):
 def get_active_session_key():
     return _active_editor_session_key
 
+_session_list_cache = {"data": None, "mtime": 0, "ts": 0}
+
 def list_all_sessions():
-    """列出所有会话：已迁移到 utils/session"""
+    """列出所有会话（带5秒缓存）"""
+    import time
+    now = time.time()
+    cache = _session_list_cache
+    store_file = os.path.join(DATA_DIR, "sessions.json")
+    mtime = os.path.getmtime(store_file) if os.path.exists(store_file) else 0
+
+    if cache["data"] and now - cache["ts"] < 5 and mtime == cache["mtime"]:
+        return cache["data"]
+
     import utils.session
-    return utils.session.list_all_sessions(DATA_DIR)
+    result = utils.session.list_all_sessions(DATA_DIR)
+    cache.update({"data": result, "mtime": mtime, "ts": now})
+    return result
+
 def get_session_info():
     """获取当前 session：已迁移到 utils/session"""
     import utils.session
@@ -329,10 +343,44 @@ def get_session_info():
 def strip_metadata(text):
     """Strip untrusted metadata: 已迁移到 utils/text_utils"""
     return _strip_metadata_impl(text)
-def read_session(session_file):
-    """读取JSONL会话文件：已迁移到 utils/session"""
-    import utils.session
-    return utils.session.read_session_v2(session_file, strip_metadata_fn=strip_metadata)
+def read_session(session_file, max_rounds=50):
+    """只读取最近 max_rounds 轮对话（默认50轮），无shutil快照"""
+    if not session_file or not os.path.exists(session_file):
+        return []
+
+    user_positions = []
+    with open(session_file, 'rb') as f:
+        for i, line in enumerate(f):
+            if b'"role": "user"' in line:
+                user_positions.append(i)
+
+    if len(user_positions) > max_rounds:
+        start_line = user_positions[-max_rounds]
+    else:
+        start_line = 0
+
+    messages = []
+    with open(session_file) as f:
+        for i, line in enumerate(f):
+            if i < start_line:
+                continue
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                msg = entry.get("message", entry)
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    texts = [c.get("text", "") for c in content if c.get("type") == "text"]
+                    content = " ".join(texts)
+                if role:
+                    messages.append({"role": role, "text": content, "content": content, "t": entry.get("t", "")})
+            except json.JSONDecodeError:
+                pass
+
+    return messages
 def fetch_session_via_gateway(session_key):
     """通过 Gateway RPC 获取会话：已迁移到 utils/session"""
     import utils.session
@@ -622,6 +670,10 @@ def push_event(event_type, summary):
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+        # ── Ping（GET /api/ping，前端轮询轻量检查）──
+        if self.path == '/api/ping':
+            self._send_json(200, {"ok": True, "identity": "qh", "gateway_port": GATEWAY_PORT, "time": time.time(), "host": socket.gethostname()})
+            return
         # ── 事件队列轮询（GET /api/events）──
         if self.path.startswith('/api/events'):
             # 可选参数 ?since=事件ID，只返回新事件
@@ -729,6 +781,7 @@ def _xml_escape(s):
 class V6Server(ThreadingHTTPServer):
     address_family = socket.AF_INET6
     allow_reuse_address = True
+    request_queue_size = 128
     def server_bind(self):
         self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         super().server_bind()

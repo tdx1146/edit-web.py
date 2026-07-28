@@ -1,31 +1,11 @@
-版本: v5.0 "自由王国" (Freedom First) — 2026-07-01
-状态: ✅ 当前运行版本完整备份
-架构: 完全前后端分离 + 模块独立 + 测试框架 + 调用链可视化
+版本: v5.1 "Context Dynamic" — 2026-07-22
+状态: ✅ 已提交 + 已归档至编辑器所有版本
 
-核心文件:
-  - edit-web.py (705行) — HTTP 服务器 + 5个核心函数
-  - inject-helper.mjs — 消息注入桥接
+修复:
+- contextTokens 动态查询（遍历所有 provider）
+- checkReminders 函数体补全
+- OpenClaw control-ui 恢复原始版本
 
-模块目录:
-  - utils/ — 17个模块，各司其职
-    - inject_lock.py (+84行，锁管理集中化)
-    - subagent.py (+4个函数，子代理管理)
-    - status_reports.py (+15个函数，状态报告)
-    - encryption.py (+7个函数，加密)
-    - text_utils.py (+4个函数，文本工具)
-    - pulse.py (+1个函数，保活脉冲)
-    - reminder.py (+5个函数，提醒系统)
-    - file_logger.py (+1个函数，文件日志)
-    - session.py (+session管理补充)
-    - config.py, crypto.py, inject.py, momo.py, secretary.py, tb_handler.py, version.py
-  - handlers/ — 9个 handler 文件
-  - static/js/ — 12个模块化 JS 文件（import/export）
-  - tests/ — 后端 pytest + 前端 HTML 测试
-
-变更记录:
-  [7/1] v5 — 自由王国重构
-     A: 基础设施（Git + 测试框架 + 调用图 + 锁超时）
-     B: 模块拆分（edit-web 瘦身64%，前端模块化，锁集中）
-     C: 接口契约（API_CONTRACT.md）
-     D: 测试扩展 + 备份归档
-EOF
+踩坑:
+- 区分两套编辑器系统后再动手
+- 修改后立即归档版本
