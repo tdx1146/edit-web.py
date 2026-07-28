@@ -24,16 +24,14 @@ def handle_get_session_data(handler):
             "dataDir": DATA_DIR,
         }}
     
-    # 用文件快照保护读JSONL（避免与Gateway并发写冲突）
     msgs = read_session(session_file) if session_file else []
-    
+
     pairs = group_into_pairs(msgs)
     total_users = sum(1 for m in msgs if m["role"] == "user")
-    idx = -1
     reversed_pairs = []
-    for p in pairs:
-        idx += 1
-        reversed_pairs.insert(0, {**p, "userIndex": idx})
+    for idx, p in enumerate(pairs):
+        reversed_pairs.append({**p, "userIndex": idx})
+    reversed_pairs.reverse()
     return {
         "sessionFile": session_file,
         "sessionKey": sk,

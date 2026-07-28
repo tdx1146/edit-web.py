@@ -178,6 +178,7 @@ setInterval(updateCachePct, 20000);
 
 // ── 🌀 自动轮询：每15秒检查新消息（原3秒导致选择中断+背景流量） ──
 var _lastPairCount = 0;
+var _lastPingTime = 0;
 var _pollTimer = setInterval(async function() {
   // 页面不可见时不轮询
   if (document.hidden) return;
@@ -186,6 +187,25 @@ var _pollTimer = setInterval(async function() {
   // 🔧 修复：编辑面板打开时不刷新 pairs，防止正在编辑时 store.pairs 被覆盖
   if (document.getElementById('edit-panel')) return;
   try {
+    // 轻量 ping 检查：时间没变化说明服务端无新数据，跳过全量拉取
+    var pingR = await fetch("/api/ping");
+    var pingD = await pingR.json();
+    if (pingD.time && _lastPingTime > 0 && Math.abs(pingD.time - _lastPingTime) < 10) {
+      // 事件通知仍要检查（轻量）
+      var evR = await fetch("/api/events?since=" + (window._lastEventId || 0));
+      var evD = await evR.json();
+      if (evD.ok && evD.events && evD.events.length > 0) {
+        window._lastEventId = evD.latest;
+        for (var i = 0; i < evD.events.length; i++) {
+          var evt = evD.events[i];
+          var isErr = (evt.type === 'error' || evt.type === 'anomaly');
+          toast('[\uD83D\uDD14 ' + evt.type + '] ' + evt.summary, isErr);
+        }
+      }
+      return;
+    }
+    _lastPingTime = pingD.time || 0;
+
     var r = await fetch("/api/session?fresh=1&t=" + Date.now());
     var d = await r.json();
     if (d.pairs && d.pairs.length > 0) {
