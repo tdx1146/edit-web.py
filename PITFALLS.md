@@ -2,7 +2,37 @@
 
 > 仓库：tdx1146/memory-integration-layer
 > 维护者：轻如yan
-> 更新时间：2026-08-02
+> 更新时间：2026-08-03
+
+---
+
+## 〇、inject-helper 消息丢失根因：fire-and-forget（F178，2026-08-03 已修复）
+
+### 问题现象
+
+- 编辑器显示发送成功，但 OpenClaw 实际未收到消息
+- 消息丢失通常发生在 gateway 事件循环被阻塞时（实测峰值可达 2.9s）
+
+### 根本原因
+
+**inject-helper.mjs 的 chat.send 分支是 fire-and-forget：**
+
+1. 发送 `chat.send` 帧后立即返回 `{ok:true}`，不等 gateway 确认
+2. 100ms 后直接退出进程
+3. 若 gateway 事件循环阻塞（如正在读写 50MB 级 session 文件），消息帧可能尚未处理，但界面已显示成功 → 消息静默丢失
+
+### 修复（权威版本 2026-08-03）
+
+1. **等待 ack**：发送 chat.send 帧后，循环读取响应帧直到收到 RPC `res`（含事件帧跳过），确认 gateway 已接收/处理
+2. **超时 3s**（略大于阻塞峰值 2.9s）：超时 → `{ok:false, error:"gateway 未确认（3s 超时）"}`，进程以非 0 退出码退出，让 edit-web.py 能捕获失败并重试
+3. **保留幂等**：idempotencyKey 不删，重试不重复投递
+4. **保留 deliver:true**
+5. abort/history 模式不受影响（原有等待逻辑不动）
+
+### 配套结构性补全
+
+- 新增 `utils/process_lock.py`（PID 文件锁，标准库实现）：新版 edit-web.py 第 42 行裸 import `from utils.process_lock import ProcessLock`，但 GitHub 上该文件不存在 → 部署即崩。已补全并验证。
+- 补全 GitHub main 根目录缺失的 `utils/` 包、`handlers/` 大部分文件、`static/` 前端文件、`inject-helper.mjs`、`cache_monitor.py`：此前根目录仅剩 edit-web.py + api_keys.py + cache_stats_helper.py + session_handler.py + core.js，结构不完整，无法独立部署。
 
 ---
 

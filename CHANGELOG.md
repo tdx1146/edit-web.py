@@ -1,5 +1,22 @@
 # 轻如烟编辑器·CHANGELOG
 
+## v5.2 (2026-08-03) — 消息丢失根因修复 + 结构性补全（权威版本）
+
+**修复 inject-helper fire-and-forget 消息丢失 + 补全缺失依赖**
+
+### 变更内容
+- 修复 inject-helper.mjs `chat.send` fire-and-forget：发送后等待 gateway RPC `res` 确认，3s 超时（覆盖 gateway 事件循环阻塞峰值 2.9s），失败时非 0 退出码，edit-web.py 可捕获重试
+- 保留 idempotencyKey（重试不重复投递）与 deliver:true
+- 新增 `utils/process_lock.py`（PID 文件锁，纯标准库）：新版 edit-web.py 的 `from utils.process_lock import ProcessLock` 依赖此前在 GitHub 上不存在，部署即崩
+- 补全 GitHub main 根目录结构：`utils/` 完整包、`handlers/` 完整模块、`static/` 前端资源、`inject-helper.mjs`、`cache_monitor.py`（此前缺失，无法独立部署）
+- 本版本为 GitHub 权威版本，覆盖此前残缺版本
+
+### 验证
+- `node --check` inject-helper 通过；模拟 gateway 测试：正常 ack / 3s 超时 / 错误 res 三态均符合预期
+- `py_compile` 全部文件通过；模拟启动（测试端口）确认配置发现 + 进程锁 + HTTP 服务 + 自动存档均正常
+
+---
+
 ## v4.2 (2026-06-27)
 
 **修复 deliver:true 缺失 + fire-and-forget 恢复**
