@@ -13,7 +13,7 @@ _M = None
 def g(name): return getattr(_M, name, None) if _M else None
 
 def handle_inject(handler):
-    """注入消息到当前会话"""
+    """注入消息到当前会话（前端可显式传 sessionKey，所见即所发，防跑偏到 global）"""
     try:
         length = int(handler.headers.get('Content-Length', 0))
         body = handler.rfile.read(length)
@@ -21,6 +21,14 @@ def handle_inject(handler):
         get_session_info = g('get_session_info')
         inject_via_websocket = g('inject_via_websocket')
         sk, _ = get_session_info()
+        # 前端显式指定会话：校验非系统容器后直接使用（双保险）
+        req_key = data.get('sessionKey') or ''
+        if req_key:
+            _excl = g('_is_excluded_session_key')
+            if _excl and _excl(req_key):
+                handler._send_json(200, {"ok": False, "error": f"不能注入到系统容器会话: {req_key}"})
+                return
+            sk = req_key
         result = inject_via_websocket(sk, data['message'])
         handler._send_json(200, result)
     except Exception as e:

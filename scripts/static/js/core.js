@@ -62,7 +62,11 @@ const api = {
   switchSession: (k) => api.get('/api/switch-session?key=' + encodeURIComponent(k)),
   deleteSession: (k) => api.get('/api/delete-session?key=' + encodeURIComponent(k)),
   abort:         () => api.post('/api/abort'),
-  inject:        (m) => api.post('/api/inject', {message: m}),
+  inject:        (m) => {
+    var _sk = '';
+    try { var _ss = CL.get('sessionSelector'); if (_ss && _ss._current) _sk = _ss._current; } catch(e) {}
+    return api.post('/api/inject', {message: m, sessionKey: _sk});
+  },
   injectFeeling: (t) => api.post('/api/momo', {sub_action: 'inject_feeling', feeling: t}),
   clearLock:     () => api.post('/api/clear-inject-lock'),
   edit:          (i, t, a) => api.post('/api/edit', {index: i, text: t, approved: !!a}),

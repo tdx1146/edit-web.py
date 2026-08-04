@@ -191,13 +191,20 @@ def handle_thinking_toggle(handler):
         body_len = int(handler.headers.get('Content-Length', 0))
         body = json.loads(handler.rfile.read(body_len))
         
-        # 读取当前 thinkingLevel，决定下一个状态
+        # 读取当前 thinkingLevel，决定下一个状态（用解析后的真实会话，不再硬编码 agent:main:main）
         ss_path = path('SESSIONS_JSON') or "/vol1/@apphome/trim.openclaw/data/home/.openclaw/agents/main/sessions/sessions.json"
         current = "off"
         try:
             with open(ss_path) as f:
                 ss = json.load(f)
-            sess = ss.get("agent:main:main", {})
+            _resolved_sk = None
+            _gsi = g('get_session_info')
+            if _gsi:
+                try:
+                    _resolved_sk, _ = _gsi()
+                except Exception:
+                    _resolved_sk = None
+            sess = ss.get(_resolved_sk or "agent:main:main", {})
             current = sess.get("thinkingLevel", "off")
         except:
             pass
