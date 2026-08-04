@@ -1,5 +1,25 @@
 # 轻如烟编辑器·CHANGELOG
 
+## v5.3 (2026-08-04) — 会话路由修复：编辑器消息不再跑偏到 global
+
+**根因**：`get_session_info()` 默认/兜底使用 `agent:main:main` 会话键；OpenClaw 配置 `session.scope="global"` 下，网关 `canonicalizeMainSessionAlias()` 将 `main` 别名规范化为 `global` 容器 → 编辑器注入的消息全部落入 global（d794e50f），与真实主对话 `agent:main:dashboard:<uuid>`（da928bb2）分离。
+
+### 变更内容
+- `edit-web.py get_session_info()`：无显式选择时不再用 `agent:main:main`；新增 `_is_excluded_session_key()`（排除 global/unknown/agent:*:main/cron/subagent）与 `_pick_best_session()`（优先 origin.provider=webchat 即 :dashboard: 会话，取 updatedAt 最新）；删除"终极 fallback 硬标 agent:main:main"
+- `list_all_sessions()`：过滤 global / unknown / agent:main:main 键，避免手动切到系统容器
+- `_thinking_status()`：用解析后的真实会话读 thinkingLevel（不再硬编码 agent:main:main）
+- `handlers/system_handler.py handle_thinking_toggle()`：同上改用真实会话
+- `handlers/router.py`：`/api/switch-session` 与 `/api/session?key=` 拒绝切换到系统容器会话
+- `handlers/inject_handler.py handle_inject()`：支持前端显式传 sessionKey（所见即所发，双保险）
+- 前端 `static/js/components.js`：会话选择器 `_current` 初始值取自 `/api/session`（不再硬编码 agent:main:main）
+- 前端 `static/js/core.js`：`/api/inject` 请求携带当前 sessionKey
+
+### 验证
+- `python3 -m py_compile` 全部通过；`node --check` JS 通过
+- 测试脚本 25 项断言全过：真实 sessions.json 上 `get_session_info()` 返回 `agent:main:dashboard:5e7ae73c-e16e-442f-b3fc-9473231bca71`（da928bb2），不再是 agent:main:main/global；global/subagent/cron/别名键均不被选中
+
+---
+
 ## v5.2 (2026-08-03) — 消息丢失根因修复 + 结构性补全（权威版本）
 
 **修复 inject-helper fire-and-forget 消息丢失 + 补全缺失依赖**

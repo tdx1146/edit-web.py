@@ -20,9 +20,14 @@ CL.register('sessionSelector', {
   init: function(ctx) {
     ctx._list = [];
     ctx._open = false;
-    ctx._current = 'agent:main:main';
-    // 启动时立即加载会话列表
+    ctx._current = '';
     var self = ctx;
+    // 当前会话以后端解析结果为准（不再硬编码 agent:main:main，防止消息跑偏到 global）
+    api.session().then(function(d) {
+      if (d && d.sessionKey) self._current = d.sessionKey;
+      CL.render('sessionSelector');
+    }).catch(function(){});
+    // 启动时立即加载会话列表
     api.listSessions().then(function(list) { 
       self._list = list || []; 
       CL.render('sessionSelector'); 
@@ -31,7 +36,7 @@ CL.register('sessionSelector', {
     /* 由全局批量调度器驱动（优化：合并7×20s轮询为1个批量请求） */
   },
   render: function(ctx, el) {
-    var curr = ctx._current || 'agent:main:main';
+    var curr = ctx._current || '';
     var html = '<div class="cl-flex-wrap"><span style="color:#8b949e">🔌</span>';
     html += '<span id="sess-drop-btn" class="cl-sess-selector">';
     html += shortKey(curr) + ' <span style="font-size:9px;color:#8b949e">▼</span>';

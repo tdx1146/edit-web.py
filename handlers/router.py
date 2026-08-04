@@ -56,6 +56,10 @@ def get(handler):
     if cp == '/api/switch-session':
         ss = g('set_active_session_key')
         key = handler._get_query_param('key') or ''
+        if key:
+            _excl = g('_is_excluded_session_key')
+            if _excl and _excl(key):
+                return st({"ok": False, "error": f"拒绝切换到系统容器会话: {key}"})
         if ss: ss(key or None)
         return st(handle_get_session_data(handler))
     if cp == '/api/delete-session':
@@ -63,6 +67,9 @@ def get(handler):
     if cp.startswith('/api/session'):
         qkey = handler._get_query_param('key') or ''
         if qkey:
+            _excl = g('_is_excluded_session_key')
+            if _excl and _excl(qkey):
+                return st({"ok": False, "error": f"拒绝切换到系统容器会话: {qkey}"})
             ok = g('get_active_session_key')
             ss = g('set_active_session_key')
             old = ok() if ok else None

@@ -282,7 +282,7 @@ def _sandglass_log(content, role='user'):
 
 # ── Session operations ──────────────────────────────────────────────────────
 
-# 编辑器中当前选中的会话 key（None = 使用默认 agent:main:main）
+# 编辑器中当前选中的会话 key（None = 自动挑选真实用户对话会话，不再默认 agent:main:main）
 _active_editor_session_key = None
 
 def set_active_session_key(key):
@@ -326,7 +326,10 @@ def list_all_sessions():
         with open(store_file) as f:
             store = json.load(f)
         for k, v in store.items():
-            if ':cron:' in k or ':subagent:' in k or ':test-' in k or ':dreaming-' in k or ':elevated-' in k:
+            if (':cron:' in k or ':subagent:' in k or ':test-' in k or ':dreaming-' in k or ':elevated-' in k
+                    or k == 'global' or k.startswith('global:')
+                    or k == 'unknown' or k.startswith('unknown:')
+                    or k == 'agent:main:main' or k.endswith(':main')):
                 continue
             sf = v.get("sessionFile", "")
             if not sf or not os.path.exists(sf):
@@ -384,48 +387,105 @@ def list_all_sessions():
         _session_list_cache["ts"] = now
     return sessions
 
+def _is_excluded_session_key(k):
+    """判断会话键是否为应排除的非对话容器：
+    global/unknown（系统事件容器）、agent:*:main（CLI 默认别名，scope=global 下
+    被网关 canonicalizeMainSessionAlias() 规范化为 global 容器）、
+    以及 cron/subagent/test/dreaming/elevated 等系统会话。
+    """
+    if not k:
+        return True
+    if k == 'global' or k.startswith('global:') or k == 'unknown' or k.startswith('unknown:'):
+        return True
+    if k == 'agent:main:main' or k.endswith(':main'):
+        return True
+    if ':cron:' in k or ':subagent:' in k or ':test-' in k or ':dreaming-' in k or ':elevated-' in k:
+        return True
+    return False
+
+
+def _pick_best_session(store):
+    """从 sessions.json 挑选最佳真实用户对话会话（修复"消息跑偏到 global"的核心逻辑）：
+    1. 排除 global / unknown / agent:*:main / cron / subagent 等非对话容器
+    2. 优先 origin.provider == webchat（或键含 :dashboard:）的会话 —— 真实主对话
+    3. 同优先级取 updatedAt 最新者
+    返回 (key, sessionFile)；无可选会话时返回 (None, None)。
+    """
+    candidates = []
+    for k, v in store.items():
+        if _is_excluded_session_key(k):
+            continue
+        sf = v.get("sessionFile")
+        if not sf or not os.path.exists(sf):
+            continue
+        origin = v.get("origin") or {}
+        provider = origin.get("provider", "") if isinstance(origin, dict) else ""
+        candidates.append({
+            "key": k,
+            "sf": sf,
+            "updated": v.get("updatedAt", 0) or 0,
+            "is_webchat": provider == "webchat" or ":dashboard:" in k,
+        })
+    if not candidates:
+        return None, None
+    pool = [c for c in candidates if c["is_webchat"]] or candidates
+    best = max(pool, key=lambda c: c["updated"])
+    return best["key"], best["sf"]
+
+
 def get_session_info():
     global _active_editor_session_key
-    target_key = _active_editor_session_key or "agent:main:main"
-    
+    target_key = _active_editor_session_key
+    store = {}
+
     # 优先：从 sessions.json 查找
     store_file = os.path.join(DATA_DIR, "sessions.json")
     if os.path.exists(store_file):
-        with open(store_file) as f:
-            store = json.load(f)
-        if target_key in store:
-            sf = store[target_key].get("sessionFile")
-            if sf and os.path.exists(sf):
-                return target_key, sf
-        # fallback: 找 main
-        main = store.get("agent:main:main")
-        if main:
-            sf = main.get("sessionFile")
-            if sf and os.path.exists(sf):
-                return "agent:main:main", sf
-        for k, v in store.items():
-            sf = v.get("sessionFile")
-            if sf and os.path.exists(sf):
-                return k, sf
-    
+        try:
+            with open(store_file) as f:
+                store = json.load(f)
+        except Exception:
+            store = {}
+        # 显式选中的有效会话（排除系统容器键）
+        if target_key and not _is_excluded_session_key(target_key):
+            entry = store.get(target_key)
+            if entry:
+                sf = entry.get("sessionFile")
+                if sf and os.path.exists(sf):
+                    return target_key, sf
+
+    # 无显式选择（或显式选择无效）→ 自动挑选真实用户对话会话
+    # 不再默认/兜底 agent:main:main（scope=global 下会被网关规范化为 global 容器）
+    if not (target_key and target_key.startswith("orphan:")):
+        picked = _pick_best_session(store)
+        if picked[0]:
+            return picked
+
     # 孤儿会话：从 orphan: 前缀提取文件名
-    if target_key.startswith("orphan:"):
+    if target_key and target_key.startswith("orphan:"):
         fname = target_key[7:]
         fp = os.path.join(DATA_DIR, fname)
         if os.path.exists(fp):
             return target_key, fp
-    
+
     # 终极 fallback：直接找目录中最大的 .jsonl
+    # 不硬编码 agent:main:main —— 尽量按文件名反查 sessions.json 里的真实 key；
+    # 查不到则返回 None key（宁缺毋滥，不再把消息误路由到 global）
     try:
         import glob
-        jsonls = [f for f in glob.glob(os.path.join(DATA_DIR, "*.jsonl")) 
+        jsonls = [f for f in glob.glob(os.path.join(DATA_DIR, "*.jsonl"))
                   if not f.endswith('.trajectory.jsonl') and '.checkpoint.' not in f]
         if jsonls:
             biggest = max(jsonls, key=os.path.getsize)
-            return "agent:main:main", biggest
-    except:
+            bname = os.path.basename(biggest)
+            for k, v in store.items():
+                sf = v.get("sessionFile") or ""
+                if os.path.basename(sf) == bname:
+                    return k, biggest
+            return None, biggest
+    except Exception:
         pass
-    
+
     return None, None
 
 
@@ -1096,11 +1156,16 @@ def _thinking_status():
                 break
     except:
         pass
-    # 从 sessions.json 读取实际 thinkingLevel
+    # 从 sessions.json 读取实际 thinkingLevel（用解析后的真实会话，不再硬编码 agent:main:main）
     try:
         with open(ss_path) as f:
             ss = _json.load(f)
-        sk = f"agent:main:main"
+        _resolved_sk = None
+        try:
+            _resolved_sk, _ = get_session_info()
+        except Exception:
+            _resolved_sk = None
+        sk = _resolved_sk or "agent:main:main"
         sess = ss.get(sk, {})
         result["thinkingLevel"] = sess.get("thinkingLevel", "off")
     except:
