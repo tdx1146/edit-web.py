@@ -61,6 +61,33 @@ DEDUP_TTL_DAYS = float(os.environ.get('SP_DEDUP_TTL_DAYS', '7'))   # 去重游�
 DEDUP_MAX = 200
 HISTORY_MAX = 20
 
+# ── 交互相位门（Phase gate，2026-08-06 dandan 设计）──
+# 人类不打扰正在上班的人：用户最近有输入时，自主唤醒应闭嘴（排队到空闲）。
+IDLE_MINUTES = float(os.environ.get('SP_IDLE_MIN', '30'))          # 最近交互判定窗口
+SESSION_DIR = os.environ.get('SP_SESSION_DIR',
+    '/vol1/@apphome/trim.openclaw/data/home/.openclaw/agents/main/sessions')
+
+
+def detect_interactive(now: float = None, session_dir: str = '') -> bool:
+    """检测主会话最近是否有交互（读会话文件 mtime）。fail-open：读不到视为非交互。"""
+    now = time.time() if now is None else now
+    d = session_dir or SESSION_DIR
+    try:
+        newest = 0.0
+        for name in os.listdir(d):
+            if not name.endswith('.jsonl') or 'trajectory' in name:
+                continue
+            p = os.path.join(d, name)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > newest:
+                newest = m
+        return (now - newest) < IDLE_MINUTES * 60
+    except Exception:
+        return False
+
 
 def _now_iso(ts: float = None) -> str:
     ts = time.time() if ts is None else ts
@@ -183,7 +210,7 @@ def _enter_sleep(st: dict, now: float) -> dict:
 
 def check(event_type: str = 'routine', fingerprint: str = '',
           now: float = None, dry_run: bool = False,
-          state: dict = None) -> tuple:
+          state: dict = None, interactive: bool = None) -> tuple:
     """唤醒判定：放行 or 抑制。
 
     参数：
@@ -193,14 +220,25 @@ def check(event_type: str = 'routine', fingerprint: str = '',
       now         测试用固定时间戳（epoch 秒）
       dry_run     不落盘（演练）
       state       注入状态（测试用）；None 时自读状态文件
+      interactive 交互相位：True=用户最近有输入（抑制常规唤醒）；
+                  None=自动检测会话文件 mtime
 
     返回 (allowed: bool, reason: str, state: dict)：
       reason: 'ok' / 'anomaly_override'（放行）
-              'dedup' / 'cooldown' / 'sleeping'（抑制）
+              'interactive' / 'dedup' / 'cooldown' / 'sleeping'（抑制）
     """
     st = state if state is not None else load_state()
     now = time.time() if now is None else now
     st = update(st, now)
+
+    # 0) 交互相位门：用户最近有输入 → 常规唤醒闭嘴（排队到空闲）；anomaly 穿透
+    override = (event_type == 'anomaly')
+    if interactive is None:
+        interactive = detect_interactive(now)
+    if interactive and not override:
+        st['total_suppressed'] = st.get('total_suppressed', 0) + 1
+        save_state(st, dry_run=dry_run)
+        return False, 'interactive', st
 
     # 1) 去重游标：同事件只唤醒一次
     if fingerprint:
@@ -212,7 +250,6 @@ def check(event_type: str = 'routine', fingerprint: str = '',
 
     # 2) 休眠期：拒绝一切自主唤醒；anomaly 可强唤醒（记入成本）
     #    置于冷却之前：休眠是最强抑制状态，优先判定
-    override = (event_type == 'anomaly')
     if st.get('mode') == 'sleeping' and not override:
         st['total_suppressed'] = st.get('total_suppressed', 0) + 1
         save_state(st, dry_run=dry_run)

@@ -65,38 +65,38 @@ def test_sleep_pressure():
     # 2.1 第一次 anomaly 放行（override）
     st = sp.default_state()
     allowed, reason, st = sp.check(event_type="anomaly", fingerprint="e1",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("首次 anomaly override", allowed and reason == "anomaly_override",
           f"reason={reason} W={st['W']:.2f}")
 
     # 2.2 冷却期抑制（routine 事件，非 anomaly）
     st = sp.default_state()
     allowed, _, st = sp.check(event_type="routine", fingerprint="e0",
-                              state=st, dry_run=True)
+                              state=st, dry_run=True, interactive=False)
     allowed, reason, st = sp.check(event_type="routine", fingerprint="e1",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("冷却期抑制", not allowed and reason == "cooldown", f"reason={reason}")
 
     # 2.3 去重（同指纹）
     st = sp.default_state()
     allowed, _, st = sp.check(event_type="anomaly", fingerprint="e1",
-                              state=st, dry_run=True)
+                              state=st, dry_run=True, interactive=False)
     allowed, reason, st = sp.check(event_type="anomaly", fingerprint="e1",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("去重抑制", not allowed and reason == "dedup", f"reason={reason}")
 
     # 2.4 休眠（放行一次后 W>θ_sleep → 进入休眠，后续被抑制）
     st = sp.default_state()
     st["W"] = 0.75          # 超过 θ_sleep(0.7)
     allowed, reason, st = sp.check(event_type="routine", fingerprint="",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("W超标放行后进入休眠", allowed and st["mode"] == "sleeping",
           f"mode={st['mode']} reason={reason}")
     allowed, reason, st = sp.check(event_type="routine", fingerprint="",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("休眠期抑制", not allowed and reason == "sleeping", f"reason={reason}")
     allowed, reason, st = sp.check(event_type="anomaly", fingerprint="",
-                                   state=st, dry_run=True)
+                                   state=st, dry_run=True, interactive=False)
     check("休眠期 anomaly override", allowed and reason == "anomaly_override",
           f"reason={reason}")
 
@@ -111,9 +111,25 @@ def test_first_sight():
         check("摘要≤500字", len(s) <= 520)
 
 
+def test_phase_gate():
+    """交互相位门（dandan 设计：不打扰正在上班的人）"""
+    st = sp.default_state()
+    a, r, st = sp.check(event_type="routine", fingerprint="", state=st,
+                        dry_run=True, interactive=True)
+    check("交互期 routine 抑制", not a and r == "interactive", f"reason={r}")
+    a, r, st = sp.check(event_type="anomaly", fingerprint="", state=st,
+                        dry_run=True, interactive=True)
+    check("交互期 anomaly 穿透", a and r == "anomaly_override", f"reason={r}")
+    st = sp.default_state()
+    a, r, st = sp.check(event_type="routine", fingerprint="", state=st,
+                        dry_run=True, interactive=False)
+    check("空闲期 routine 放行", a and r == "ok", f"reason={r}")
+
+
 if __name__ == "__main__":
     test_salience()
     test_sleep_pressure()
+    test_phase_gate()
     test_first_sight()
     print("-" * 40)
     if FAILS:
