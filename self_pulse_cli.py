@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化，2026-08-05）
+self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自主唤醒链 2026-08-06）
 ===========================================================
 从"心跳测试"升级为"自主感知引擎"（Phase6 重建版 v1 的继任者）：
+
+v2.1 新增（自主唤醒架构）：漂移告警出口从"写 sandglass+总线"扩展为
+  告警 → salience_gate 判定 → sleep_pressure 体力检查 → wake_client
+  POST /hooks/wake 唤醒主 AI（text=first_sight 醒来第一眼摘要，
+  mode=next-heartbeat 保守）；低优先级（新待办）只记录不唤醒。
+  SELF_PULSE_WAKE=0 可整体禁用；SELF_PULSE_WAKE_MODE=now 可立即唤醒。
 
 每个脉冲（pulse-cron.sh 每 10 分钟调用）：
   1. 采集画像指标（全只读、fail-open）：
@@ -43,6 +49,7 @@ self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化，2026-08-05）
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import sys
@@ -50,6 +57,18 @@ import time
 import urllib.request
 import uuid
 from datetime import datetime
+
+# 自主唤醒链（v2.1，2026-08-06）：salience_gate → sleep_pressure → wake_client
+# 全 fail-open：任一模块缺失/异常 → 唤醒链禁用，不影响原有脉冲逻辑
+_WAKE_MODULES_OK = False
+try:
+    from salience_gate import judge as salience_judge
+    from sleep_pressure import check as sleep_check
+    from first_sight import build as build_first_sight
+    from wake_client import wake as wake_main
+    _WAKE_MODULES_OK = True
+except Exception:
+    _WAKE_MODULES_OK = False
 
 _SELF = '/vol1/@apphome/trim.openclaw/data/workspace'
 # 沙漏数据目录：NEXSANDBASE_HOME 优先（pulse-cron.sh 会导出）；
@@ -231,6 +250,58 @@ def judge_drift(metrics: dict, state: dict) -> tuple:
     return flags, streaks, alerts
 
 
+# ── 自主唤醒链（v2.1：告警 → salience 判定 → 体力检查 → 唤醒，全 fail-open）──
+
+
+def attempt_wake(drift_alert: str, metrics: dict, rnd: int,
+                 dry_run: bool = False, verdict: dict = None) -> dict:
+    """漂移告警 → 体力检查 → 醒来第一眼 → 唤醒主 AI（mode=next-heartbeat 保守）。
+
+    返回 dict（供 metrics/日志；token 永不出现）：
+      enabled / salient / allowed / woke + reason + 各步详情
+    """
+    out = {'enabled': False, 'salient': False, 'allowed': False,
+           'woke': False, 'reason': None}
+    if not _WAKE_MODULES_OK or os.environ.get('SELF_PULSE_WAKE', '1') == '0':
+        out['reason'] = 'wake_disabled'
+        return out
+    out['enabled'] = True
+    out['salient'] = bool(verdict and verdict.get('salient'))
+    out['gate'] = {k: (verdict or {}).get(k) for k in
+                   ('score', 'novelty', 'salience', 'goal',
+                    'hard_bypass', 'z', 'entropy_streak', 'purpose_streak')}
+    if not out['salient']:
+        out['reason'] = 'gate_rejected'
+        return out
+    try:
+        fp = hashlib.sha256(('drift:' + drift_alert).encode('utf-8')).hexdigest()[:16]
+        allowed, reason, sp = sleep_check('anomaly', fingerprint=fp,
+                                          dry_run=dry_run)
+        out['allowed'] = allowed
+        out['sleep'] = {k: sp.get(k) for k in
+                        ('W', 'mode', 'total_wakes',
+                         'total_suppressed', 'total_overrides')}
+        if not allowed:
+            out['reason'] = f'sleep_pressure:{reason}'
+            return out
+    except Exception as e:
+        out['reason'] = f'sleep_error:{type(e).__name__}'
+        return out
+    try:
+        text = build_first_sight()
+        out['text_len'] = len(text)
+        wr = wake_main(text, mode=os.environ.get('SELF_PULSE_WAKE_MODE',
+                                                 'next-heartbeat'),
+                       dry_run=dry_run)
+        out['woke'] = bool(wr.get('ok'))
+        out['wake_status'] = wr.get('status')
+        out['wake_error'] = (wr.get('error') or '')[:120]
+        out['reason'] = 'woke' if wr.get('ok') else f'wake_failed:{out["wake_error"]}'
+    except Exception as e:
+        out['reason'] = f'wake_error:{type(e).__name__}'
+    return out
+
+
 # ── 输出通道（全部 fail-open）────────────────────────────────────────────
 
 
@@ -390,12 +461,30 @@ def main(argv=None) -> dict:
     # 5. 输出分级
     sandglass_entries = []
     bus_events = []
-    drift_alert = None
-    todo_new = False
+    drift_alert = '；'.join(alerts) if alerts else None
+    todo_hash = first_todo[:MAX_TODO_LEN] if first_todo else ''
+    todo_new = bool(first_todo and state.get('last_todo_hash') != todo_hash)
 
-    # 5a. 漂移 → sandglass ⚠️ + 总线 anomaly（FAIL，走 alert.anomaly handler）
-    if alerts:
-        drift_alert = '；'.join(alerts)
+    # 5a. 显著性门（每脉冲更新窗口/连续计数/边沿；失败不阻塞，fail-open）
+    gate_verdict = None
+    if _WAKE_MODULES_OK:
+        try:
+            gate_ev_type = ('anomaly' if drift_alert
+                            else ('alert.todo' if todo_new else 'routine'))
+            gate_verdict = salience_judge(gate_ev_type, metrics=metrics,
+                                          dry_run=dry_run)
+        except Exception:
+            gate_verdict = None
+
+    # 5a2. 唤醒链（仅漂移告警；低优先级只记录不唤醒）
+    #   告警 → salience 判定（已通过）→ 体力检查 → 醒来第一眼 → POST /hooks/wake
+    wake_result = None
+    if drift_alert and gate_verdict and gate_verdict.get('salient'):
+        wake_result = attempt_wake(drift_alert, metrics, rnd,
+                                   dry_run=dry_run, verdict=gate_verdict)
+
+    # 5b. 漂移 → sandglass ⚠️ + 总线 anomaly（FAIL，走 alert.anomaly handler）
+    if drift_alert:
         sandglass_entries.append(f'{_ts()} | system | ⚠️ self_pulse 漂移告警: {drift_alert}')
         payload = {
             'drift': drift_alert,
@@ -405,6 +494,7 @@ def main(argv=None) -> dict:
             'streaks': streaks,
             'round': rnd,
             'recent_sandglass': sand_recent[-1:] if sand_recent else [],
+            'wake': wake_result,
         }
         ev = publish_bus_event(
             'anomaly', 'FAIL',
@@ -421,10 +511,8 @@ def main(argv=None) -> dict:
                 'round': rnd,
             }
 
-    # 5b. 新待办（hash 去重：同一待办不重复刷屏）→ sandglass + 总线 alert.todo
-    todo_hash = first_todo[:MAX_TODO_LEN] if first_todo else ''
-    if first_todo and state.get('last_todo_hash') != todo_hash:
-        todo_new = True
+    # 5c. 新待办（hash 去重：同一待办不重复刷屏）→ sandglass + 总线 alert.todo
+    if todo_new:
         sandglass_entries.append(f'{_ts()} | system | self_pulse 待办提醒: {todo_hash}')
         ev = publish_bus_event(
             'alert.todo', 'OK',
@@ -471,6 +559,10 @@ def main(argv=None) -> dict:
         'sandglass_written': bool(sandglass_entries),
         'bus_events': len(bus_events),
         'simulated': simulated,
+        'gate': {k: gate_verdict.get(k) for k in
+                 ('salient', 'score', 'novelty', 'salience', 'goal')}
+        if gate_verdict else None,
+        'wake': wake_result,
     }, ensure_ascii=False)
     metrics_written = append_metrics(metrics_line, dry_run=dry_run)
 
@@ -503,6 +595,8 @@ def main(argv=None) -> dict:
         'metrics_written': metrics_written,
         'state_saved': state_saved,
         'dry_run': dry_run,
+        'gate_verdict': gate_verdict,
+        'wake_result': wake_result,
     }
 
 
