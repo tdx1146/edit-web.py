@@ -1,0 +1,23 @@
+# 运行时产物与噪音（绝不入库）
+.inject_logs/
+.locks/
+.踱步/
+__pycache__/
+*.pyc
+*.log
+*.bak*
+*.lock
+backup/
+revisions/
+experimental/
+deploy-notes/
+edit-web-github/
+sandglass_source/    # 他人仓库副本，不入库
+system-config/
+static/
+handlers/__pycache__/
+utils/__pycache__/
+edit-web.py*
+*.mjs
+api_keys.py
+openclaw.json.LEGACY_DO_NOT_USE
