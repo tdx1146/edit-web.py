@@ -3,7 +3,7 @@
 """
 first_sight.py — 醒来第一眼（D 数据面，2026-08-06）
 ====================================================
-"为什么叫醒我"信息面拼装：回魂 + 事件 + 告警 + 待办 + 足迹。
+"为什么叫醒我"信息面拼装：回魂 + 事件 + 告警 + 待办 + 足迹 + 行动。
 全 fail-open（任何数据源失败 → 该段留空，不阻塞），纯文本，≤500 字。
 
 数据源（全部已存在，只拼装）：
@@ -12,6 +12,9 @@ first_sight.py — 醒来第一眼（D 数据面，2026-08-06）
   3. 告警：sandglass.txt 尾部漂移告警（⚠️ 行，最多 2 条）
   4. 待办：workspace/memory/backlog.md 首条未完成（- [ ] ）
   5. 足迹：workspace/memory/ 最近日期文件尾 2 行
+  6. 行动（2026-08-06 醒来自主行动）：workspace/memory/reading-log.md
+     首条未完成项（- [ ] ）→ 拼"继续学习任务：<任务名>"，让主代理醒来
+     后直接接续精读；文件缺失/无未完成项 → 段留空（fail-open）。段序最后。
 
 用法：
     from first_sight import build
@@ -43,11 +46,14 @@ _SAND_FILE = os.environ.get('FIRST_SIGHT_SAND_FILE',
                             os.path.join(_SANDBASE, 'sandglass.txt'))
 _BACKLOG_FILE = os.environ.get('FIRST_SIGHT_BACKLOG_FILE',
                                os.path.join(_SELF, 'memory', 'backlog.md'))
+_READING_LOG_FILE = os.environ.get('FIRST_SIGHT_READING_LOG_FILE',
+                                   os.path.join(_SELF, 'memory', 'reading-log.md'))
 _MEMORY_DIR = os.environ.get('FIRST_SIGHT_MEMORY_DIR',
                              os.path.join(_SELF, 'memory'))
 
 _MAX_CHARS = 500      # 总长度硬上限
-_SEG_MAX = 110        # 每段内容上限（保证五段都有位置）
+_SEG_MAX = 75         # 每段内容上限（2026-08-06：六段 × 75 + 标题 ≈ 474 < 500，
+                      # 最坏情况也不截断；原 110 在六段下最坏 684 > 500）
 
 
 def _now_iso() -> str:
@@ -158,8 +164,27 @@ def _seg_footprint() -> str:
     return _seg('足迹', '；'.join(tail))
 
 
+def _seg_action() -> str:
+    """行动（2026-08-06 醒来自主行动）：reading-log.md 第一条未完成项。
+
+    取 `- [ ] ` 开头行的任务名部分，拼成「继续学习任务：<任务名>」。
+    文件缺失 / 无未完成项 → 段留空（fail-open）。段序放最后。
+    """
+    try:
+        with open(_READING_LOG_FILE, encoding='utf-8') as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return _seg('行动', '—')
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith('- [ ] '):
+            return _seg('行动', '继续学习任务：' + s[len('- [ ] '):].strip())
+    return _seg('行动', '—')
+
+
 def build(bus_file: str = '', sand_file: str = '', backlog_file: str = '',
           memory_dir: str = '', lms_url: str = '', voice_url: str = '',
+          reading_log_file: str = '',
           max_chars: int = _MAX_CHARS) -> str:
     """拼"醒来第一眼"纯文本摘要（≤500 字）。全 fail-open。"""
     if bus_file:
@@ -174,6 +199,8 @@ def build(bus_file: str = '', sand_file: str = '', backlog_file: str = '',
         globals()['_LMS_URL'] = lms_url
     if voice_url:
         globals()['_VOICE_URL'] = voice_url
+    if reading_log_file:
+        globals()['_READING_LOG_FILE'] = reading_log_file
 
     parts = [
         _seg_huihun(),
@@ -181,6 +208,7 @@ def build(bus_file: str = '', sand_file: str = '', backlog_file: str = '',
         _seg_alerts(),
         _seg_todo(),
         _seg_footprint(),
+        _seg_action(),
     ]
     joined = '\n'.join(parts)
     if len(joined) > max_chars:

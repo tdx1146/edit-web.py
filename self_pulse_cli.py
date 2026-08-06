@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自主唤醒链 2026-08-06）
+self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自主唤醒链 2026-08-06 / v2.2 级别触发唤醒 2026-08-06）
 ===========================================================
 从"心跳测试"升级为"自主感知引擎"（Phase6 重建版 v1 的继任者）：
 
@@ -10,6 +10,11 @@ v2.1 新增（自主唤醒架构）：漂移告警出口从"写 sandglass+总线
   POST /hooks/wake 唤醒主 AI（text=first_sight 醒来第一眼摘要，
   mode=next-heartbeat 保守）；低优先级（新待办）只记录不唤醒。
   SELF_PULSE_WAKE=0 可整体禁用；SELF_PULSE_WAKE_MODE=now 可立即唤醒。
+
+v2.2 调整（2026-08-06 醒来自主行动）：唤醒条件从"仅漂移告警边沿触发"改为
+  级别触发——salient 判定通过即唤醒（慢性高熵无边沿，原守卫永不触发）。
+  刹车唯一来源是 sleep_pressure（冷却/去重/休眠/交互相位门/anomaly override）；
+  有 drift_alert 走 anomaly（可强唤醒），否则 routine（刹车全生效）。
 
 每个脉冲（pulse-cron.sh 每 10 分钟调用）：
   1. 采集画像指标（全只读、fail-open）：
@@ -91,7 +96,10 @@ _METRICS_FILE = os.path.join(_SANDBASE, 'metrics.jsonl')
 _SAND_FILE = os.path.join(_SANDBASE, 'sandglass.txt')
 
 # 判定阈值（保守起步，全部可用环境变量覆盖）
-ENTROPY_HIGH = float(os.environ.get('SELF_PULSE_ENTROPY_HIGH', '0.9'))  # = LMS entropy_high_threshold
+# 2026-08-06 调整：ENTROPY_HIGH 0.9 → 0.85。慢性高位长期化（streak 79+）导致
+# 0.9 线永不回落、告警永不产生（边沿触发因此停摆）；调低给"慢性高位"留出
+# 可判定的漂移区，仍可 env 覆盖。
+ENTROPY_HIGH = float(os.environ.get('SELF_PULSE_ENTROPY_HIGH', '0.85'))  # 2026-08-06: 0.9→0.85
 PURPOSE_LOW = float(os.environ.get('SELF_PULSE_PURPOSE_LOW', '0.8'))
 MIN_STREAK = int(os.environ.get('SELF_PULSE_MIN_STREAK', '3'))          # 连续 ≥3 次脉冲 ≈ 30 分钟
 KEEP_SNAPSHOTS = 5                                                       # 状态文件保留近 5 次快照
@@ -274,8 +282,16 @@ def attempt_wake(drift_alert: str, metrics: dict, rnd: int,
         out['reason'] = 'gate_rejected'
         return out
     try:
-        fp = hashlib.sha256(('drift:' + drift_alert).encode('utf-8')).hexdigest()[:16]
-        allowed, reason, sp = sleep_check('anomaly', fingerprint=fp,
+        # 2026-08-06 事件等级映射（级别触发后关键修正）：有漂移告警 → anomaly
+        # （可强唤醒，人类被地震吵醒）；慢性态例行唤醒 → routine（交互相位/
+        # 休眠/冷却全部生效）。原硬编码 'anomaly' 会让 routine 唤醒绕过全部
+        # 刹车 → 自激循环、W 无界增长。指纹仅漂移事件用（去重游标）；
+        # routine 走冷却/休眠/体力上限刹车，不做指纹去重。
+        ev_type = 'anomaly' if drift_alert else 'routine'
+        fp = ''
+        if drift_alert:
+            fp = hashlib.sha256(('drift:' + drift_alert).encode('utf-8')).hexdigest()[:16]
+        allowed, reason, sp = sleep_check(ev_type, fingerprint=fp,
                                           dry_run=dry_run)
         out['allowed'] = allowed
         out['sleep'] = {k: sp.get(k) for k in
@@ -476,10 +492,11 @@ def main(argv=None) -> dict:
         except Exception:
             gate_verdict = None
 
-    # 5a2. 唤醒链（仅漂移告警；低优先级只记录不唤醒）
-    #   告警 → salience 判定（已通过）→ 体力检查 → 醒来第一眼 → POST /hooks/wake
+    # 5a2. 唤醒链（v2.2 级别触发：salient 即唤醒，不再要求 drift_alert 边沿）
+    #   salient 判定通过 → 体力检查 → 醒来第一眼 → POST /hooks/wake
+    #   刹车唯一来源 = sleep_pressure（冷却/去重/休眠/交互相位/anomaly override）
     wake_result = None
-    if drift_alert and gate_verdict and gate_verdict.get('salient'):
+    if gate_verdict and gate_verdict.get('salient'):
         wake_result = attempt_wake(drift_alert, metrics, rnd,
                                    dry_run=dry_run, verdict=gate_verdict)
 
