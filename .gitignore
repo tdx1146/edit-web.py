@@ -1,23 +1,35 @@
-# 运行时产物与噪音（绝不入库）
+# ═══ 密钥与实例配置（绝不分发）═══
+api_keys.py            # 已无硬编码密钥(纯env读取)，但保持不入库双保险
+.env
+.env.*
+!*.example
+openclaw.json*
+identity/
+system-config/
+
+# ═══ 运行时数据（绝不分发）═══
 .inject_logs/
 .locks/
 .踱步/
+sessions/
+*.trajectory.jsonl
+*.jsonl.reset.*
+*.checkpoint.*
+backup/
+revisions/
+experimental/
+deploy-notes/
+logs/
+releases/              # 打包产物输出目录
+*.tar.gz
+
+# ═══ 噪音/备份（绝不分发）═══
 __pycache__/
 *.pyc
 *.log
 *.bak*
 *.lock
-backup/
-revisions/
-experimental/
-deploy-notes/
+
+# ═══ 他人仓库副本 ═══
+sandglass_source/
 edit-web-github/
-sandglass_source/    # 他人仓库副本，不入库
-system-config/
-static/
-handlers/__pycache__/
-utils/__pycache__/
-edit-web.py*
-*.mjs
-api_keys.py
-openclaw.json.LEGACY_DO_NOT_USE
