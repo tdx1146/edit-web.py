@@ -58,7 +58,7 @@ done
 if [ "${1:-}" != "--skip-scan" ]; then
   echo "── 密钥扫描 ──"
   HITS=$(grep -rInE \
-    'sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._-]{10,}|password[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{6,}|(api[_-]?key|secret)[[:space:]]*[:=][[:space:]]*["'"'"'][A-Za-z0-9_\-]{16,}' \
+    'sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|[0-9a-f]{32}\.[A-Za-z0-9]{10,}|Bearer [A-Za-z0-9._-]{10,}|password[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{6,}|(api[_-]?key|secret)[[:space:]]*[:=][[:space:]]*["'"'"'][A-Za-z0-9_\-]{16,}' \
     "$STAGE" 2>/dev/null | grep -v "os.environ" | head -10 || true)
   if [ -n "$HITS" ]; then
     echo "🚫 检测到疑似密钥，打包中止："
