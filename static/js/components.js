@@ -43,7 +43,7 @@ CL.register('sessionSelector', {
         var sk = s.sessionKey || '';
         var isCurr = (sk === curr);
         html += '<div data-sk="' + sk.replace(/"/g, '&quot;') + '" class="cl-sess-item' + (isCurr ? ' current' : '') + '">';
-        html += '<span class="cl-sess-name" style="color:' + (isCurr ? '#58a6ff' : '#c9d1d9') + '">' + shortKey(sk) + '</span>';
+        html += '<span class="cl-sess-name" style="color:' + (isCurr ? '#58a6ff' : '#c9d1d9') + '">' + (s.isMain ? '\ud83d\udccc ' : '') + shortKey(sk) + '</span>';
         html += '<span class="cl-sess-time">' + fmtTimeShort(s.updatedAt) + '</span>';
         html += '<span class="cl-sess-count">' + (s.messageCount || '?') + '条</span>';
         html += '<span data-del="' + sk.replace(/"/g, '&quot;') + '" class="cl-sess-delete">✕</span>';
@@ -68,6 +68,7 @@ CL.register('sessionSelector', {
         var item = t.closest('.cl-sess-item');
         var k = item.getAttribute('data-sk');
         if (k) {
+          if (k.indexOf('orphan:') === 0) toast('\u5b58\u6863/\u5b64\u513f\u4f1a\u8bdd\uff1a\u53ea\u8bfb\u56de\u770b\uff0c\u53d1\u9001\u5c06\u81ea\u52a8\u56de\u843d\u4e3b\u5bf9\u8bdd');
           ctx._current = k;
           ctx._open = false;
           api.switchSession(k).then(function(d) {
@@ -87,7 +88,7 @@ CL.register('sessionSelector', {
 
 function shortKey(key) {
   if (!key) return '';
-  if (key === 'agent:main:main') return '\u5f53\u524d\u4f1a\u8bdd';
+  if (key === 'agent:main:main') return '\ud83d\udccc \u5f53\u524d\u4e3b\u5bf9\u8bdd';
   if (key.indexOf('cron:') > 0) return 'cron:' + key.slice(-8);
   if (key.indexOf('subagent:') > 0) return 'sub:' + key.slice(-8);
   if (key.indexOf(':dashboard:') > 0) return '\u4eea\u8868\u76d8:' + key.slice(-12);

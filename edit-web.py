@@ -190,6 +190,20 @@ else:
 
 def inject_via_websocket(session_key, message, bypass_lock=False):
     """Call Node.js helper to send chat.send to the target session."""
+    # ── 🔒 2026-08-06 发送护栏：orphan:/None 假 key 绝不发给网关 ──
+    # 网关收到不存在的 sessionKey 会新建幽灵会话（实测 agent:main:orphan:*），
+    # 这是「每次发送都像新开会话」的直接原因。兜底确定性回落 agent:main:main。
+    if not session_key or str(session_key).startswith('orphan:'):
+        try:
+            with open(os.path.join(DATA_DIR, "sessions.json")) as f:
+                _store = json.load(f)
+            _sf = (_store.get('agent:main:main') or {}).get('sessionFile', '')
+            if _sf and os.path.exists(_sf):
+                session_key = 'agent:main:main'
+        except Exception:
+            pass
+    if not session_key or str(session_key).startswith('orphan:'):
+        raise Exception("安全限制：无法确定发送目标会话（主会话文件缺失）。请检查 sessions 目录。")
     now = time.time()
     # NexSandglass 自动落沙：所有消息写入沙漏
     _sandglass_log(message, 'user' if not bypass_lock else 'sister')
@@ -326,10 +340,12 @@ def list_all_sessions():
         with open(store_file) as f:
             store = json.load(f)
         for k, v in store.items():
-            if (':cron:' in k or ':subagent:' in k or ':test-' in k or ':dreaming-' in k or ':elevated-' in k
-                    or k == 'global' or k.startswith('global:')
-                    or k == 'unknown' or k.startswith('unknown:')
-                    or k == 'agent:main:main' or k.endswith(':main')):
+            if _is_excluded_session_key(k):
+                # ★ 2026-08-06 修复孤儿重复发现：被排除容器的文件也登记 seen_files，
+                #   避免孤儿扫描把 subagent/cron 文件重复列成 orphan: 条目
+                sf0 = v.get("sessionFile", "")
+                if sf0:
+                    seen_files.add(os.path.basename(sf0))
                 continue
             sf = v.get("sessionFile", "")
             if not sf or not os.path.exists(sf):
@@ -347,6 +363,7 @@ def list_all_sessions():
                 "createdAt": v.get("createdAt", 0),
                 "totalTokens": v.get("totalTokens", 0),
                 "messageCount": msg_count,
+                "isMain": (k == 'agent:main:main'),
             })
     
     # 发现孤儿文件——只检查文件大小>1KB，不open检查内容
@@ -379,7 +396,7 @@ def list_all_sessions():
     except:
         pass
     
-    sessions.sort(key=lambda s: s.get("updatedAt", 0) or 0, reverse=True)
+    sessions.sort(key=lambda s: (not s.get("isMain", False), -(s.get("updatedAt", 0) or 0)))
     # 写入缓存（线程安全）
     with _session_list_lock:
         _session_list_cache["data"] = sessions
@@ -389,25 +406,28 @@ def list_all_sessions():
 
 def _is_excluded_session_key(k):
     """判断会话键是否为应排除的非对话容器：
-    global/unknown（系统事件容器）、agent:*:main（CLI 默认别名，scope=global 下
-    被网关 canonicalizeMainSessionAlias() 规范化为 global 容器）、
+    global/unknown（系统事件容器）、其他 agent 的 *:main 别名、
     以及 cron/subagent/test/dreaming/elevated 等系统会话。
+    ★ 2026-08-06：agent:main:main 不再排除——openclaw.json 无 scope=global，
+    它是真实 webchat 主会话（sessions.json 实测），排除它导致自动挑选永远失败。
     """
     if not k:
         return True
     if k == 'global' or k.startswith('global:') or k == 'unknown' or k.startswith('unknown:'):
         return True
-    if k == 'agent:main:main' or k.endswith(':main'):
-        return True
+    if k == 'agent:main:main':
+        return False          # ★ 真实主会话，不再排除
+    if k.endswith(':main'):
+        return True           # 其他 agent 的 *:main 别名仍排除
     if ':cron:' in k or ':subagent:' in k or ':test-' in k or ':dreaming-' in k or ':elevated-' in k:
         return True
     return False
 
 
 def _pick_best_session(store):
-    """从 sessions.json 挑选最佳真实用户对话会话（修复"消息跑偏到 global"的核心逻辑）：
-    1. 排除 global / unknown / agent:*:main / cron / subagent 等非对话容器
-    2. 优先 origin.provider == webchat（或键含 :dashboard:）的会话 —— 真实主对话
+    """从 sessions.json 挑选最佳真实用户对话会话：
+    1. 排除 global/unknown/其他 *:main/cron/subagent 等系统容器（agent:main:main 不再排除）
+    2. 优先级：agent:main:main（当前主对话）→ origin.provider==webchat → 任意非排除会话
     3. 同优先级取 updatedAt 最新者
     返回 (key, sessionFile)；无可选会话时返回 (None, None)。
     """
@@ -424,10 +444,14 @@ def _pick_best_session(store):
             "key": k,
             "sf": sf,
             "updated": v.get("updatedAt", 0) or 0,
+            "is_main": (k == 'agent:main:main'),
             "is_webchat": provider == "webchat" or ":dashboard:" in k,
         })
     if not candidates:
         return None, None
+    for c in candidates:
+        if c["is_main"]:
+            return c["key"], c["sf"]        # ★ 主对话永远优先，不依赖 origin 元数据
     pool = [c for c in candidates if c["is_webchat"]] or candidates
     best = max(pool, key=lambda c: c["updated"])
     return best["key"], best["sf"]
@@ -446,7 +470,7 @@ def get_session_info():
                 store = json.load(f)
         except Exception:
             store = {}
-        # 显式选中的有效会话（排除系统容器键）
+        # 显式选中的有效会话（排除系统容器键）→ 直接用
         if target_key and not _is_excluded_session_key(target_key):
             entry = store.get(target_key)
             if entry:
@@ -454,19 +478,22 @@ def get_session_info():
                 if sf and os.path.exists(sf):
                     return target_key, sf
 
-    # 无显式选择（或显式选择无效）→ 自动挑选真实用户对话会话
-    # 不再默认/兜底 agent:main:main（scope=global 下会被网关规范化为 global 容器）
-    if not (target_key and target_key.startswith("orphan:")):
-        picked = _pick_best_session(store)
-        if picked[0]:
-            return picked
+        # ★ 2026-08-06 自愈：显式选中 orphan: 假 key → 按文件名反查真实注册会话
+        #   （历史误点击的脏状态自动修正：orphan:d452b23e-... → agent:main:main）
+        if target_key and target_key.startswith("orphan:"):
+            fname = target_key[len("orphan:"):]
+            for k, v in store.items():
+                sf = v.get("sessionFile") or ""
+                if os.path.basename(sf) == fname:
+                    return k, sf
+            fp = os.path.join(DATA_DIR, fname)
+            if os.path.exists(fp):
+                return None, fp    # 真·未注册文件：只读回看（发送层拒绝）
 
-    # 孤儿会话：从 orphan: 前缀提取文件名
-    if target_key and target_key.startswith("orphan:"):
-        fname = target_key[7:]
-        fp = os.path.join(DATA_DIR, fname)
-        if os.path.exists(fp):
-            return target_key, fp
+    # 自动挑选（A3 后必含主会话 agent:main:main）
+    picked = _pick_best_session(store)
+    if picked[0]:
+        return picked
 
     # 终极 fallback：直接找目录中最大的 .jsonl
     # 不硬编码 agent:main:main —— 尽量按文件名反查 sessions.json 里的真实 key；

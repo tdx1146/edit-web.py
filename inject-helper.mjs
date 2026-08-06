@@ -29,6 +29,11 @@ if (!sessionKey) {
   process.stderr.write('Usage: inject-helper.mjs <sessionKey> <message> [send|abort|history]\n');
   process.exit(1);
 }
+// 🔒 2026-08-06：拒绝假 sessionKey，防止网关创建幽灵会话
+if (sessionKey.startsWith('orphan:') || sessionKey.startsWith('agent:main:orphan:')) {
+  process.stderr.write('Error: refusing to send to fake session key: ' + sessionKey + '\n');
+  process.exit(1);
+}
 if (method !== 'abort' && method !== 'history' && !message) {
   process.stderr.write('Error: message is required for send mode\n');
   process.exit(1);
