@@ -50,9 +50,20 @@ def load_token(path: str = '') -> str:
 
 
 def hooks_url() -> str:
-    """完整 wake 端点 URL（不含 token，可安全打印/记录）。"""
+    """完整 wake 端点 URL（不含 token，可安全打印/记录）。
+    ★ 2026-08-06 修复：gateway hooks 挂在 {base}{hooks.path} 下，
+    实际端点是 /hooks/wake 而非 /wake（原实现 404，活体测试暴露）。"""
     base = (os.environ.get('HOOKS_URL') or _DEFAULT_HOOKS_URL).rstrip('/')
-    return base + '/wake'
+    if base.endswith('/hooks'):
+        return base + '/wake'
+    path = os.environ.get('HOOKS_PATH', '')
+    if not path:
+        try:
+            with open(_DEFAULT_OPENCLAW_JSON, encoding='utf-8') as f:
+                path = (json.load(f).get('hooks') or {}).get('path', '/hooks')
+        except Exception:
+            path = '/hooks'
+    return base + '/' + str(path).strip('/') + '/wake'
 
 
 def wake(text: str = '', mode: str = 'next-heartbeat',
