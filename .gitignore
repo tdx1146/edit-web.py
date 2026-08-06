@@ -39,3 +39,4 @@ edit-web-github/
 *.old.*
 *.covered-*
 *.bak.*
+embed-server.mjs.backup
