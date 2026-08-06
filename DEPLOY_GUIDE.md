@@ -300,3 +300,34 @@ sh install-hooks.sh
 - **kernel/** — git commit 后自动创建版本快照（trigger: git_commit）
 - **iso-sand/** — git commit 后通知 kernel 创建快照（trigger: iso-sand_commit）
 - **轻如烟/** — git commit 后通知 kernel 创建快照（trigger: editor_update）
+
+---
+
+## 🚚 分发给姐姐的干净部署（2026-08-06 版）
+
+### 三个文件各司其职
+| 文件 | 作用 |
+|------|------|
+| `qinruyan-release-<日期>.tar.gz` | 代码发布包（白名单制，无密钥无垃圾） |
+| `*.sha256` | 校验和（下载后必验） |
+| `*.manifest.txt` | 内容清单 + 未打包说明 |
+
+### 部署步骤（姐姐机器）
+1. **下载**：拿到 `qinruyan-release-*.tar.gz` + `.sha256`
+2. **校验**：`sha256sum -c qinruyan-release-*.tar.gz.sha256`（不一致=包损坏，勿用）
+3. **解压**：`tar -xzf qinruyan-release-*.tar.gz` 到目标目录
+4. **填配置**：
+   - `cp editor-config.example.json editor-config.json` → 填本机路径（OpenClaw home、sessions 目录、沙漏目录）
+   - `cp .env.example .env` → 填模型密钥（DEEPSEEK/GLM/HUNYUAN）与 `BUN_BIN`
+   - 或 `export` 同名环境变量（edit-web.py 优先读 editor-config.json，其次环境变量）
+5. **装依赖**：python3、bun（inject-helper.mjs 用）、OpenClaw gateway 在跑
+6. **启动**：`python3 edit-web.py`（或 `bash start-clean.sh`）
+7. **自检**：
+   - `curl http://127.0.0.1:18888/api/ping` → `{"ok": true}`
+   - 发一条测试消息 → 应出现在编辑器 UI
+   - 若用到唤醒链：确认 `wake_client.py --real` 能唤醒（token 来自本机 openclaw.json 的 hooks.token，**不要拷贝别家的 token**）
+
+### 常见坑
+- **token 不通用**：inject-helper 读本机 `openclaw.json` 的 hooks.token，必须用姐姐实例自己的
+- **api_keys.py 无密钥**：它纯读环境变量，密钥只在 `.env` 里，别把 `.env` 传出去
+- **路径**：包里含 `/vol2/1000` 的本机路径仅出现在历史文档；运行配置一律走 editor-config.json / 环境变量

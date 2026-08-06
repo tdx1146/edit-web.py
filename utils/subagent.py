@@ -53,10 +53,11 @@ def spawn_subagent_process(task, model, timeout, get_session_info, gateway_port,
 # ── exec 子代理 ─────────────────────────────────────────────────────────────
 
 EXEC_MODELS = {
-    'deepseek-chat': {'url': 'https://api.deepseek.com/chat/completions', 'key': 'sk-REDACTED', 'provider': 'DeepSeek'},
-    'GLM-Z1-Flash': {'url': 'https://open.bigmodel.cn/api/paas/v4/chat/completions', 'key': 'REDACTED', 'provider': 'GLM'},
-    'hunyuan-instruct': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': 'sk-REDACTED', 'provider': '混元', 'model': 'hunyuan-2.0-instruct-20251111'},
-    'hunyuan-thinking': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': 'sk-REDACTED', 'provider': '混元', 'model': 'hunyuan-2.0-thinking-20251109'},
+    # 密钥一律从环境变量读取（.env 由 start-clean.sh source），严禁硬编码
+    'deepseek-chat': {'url': 'https://api.deepseek.com/chat/completions', 'key': os.environ.get('DEEPSEEK_API_KEY', ''), 'provider': 'DeepSeek'},
+    'GLM-Z1-Flash': {'url': 'https://open.bigmodel.cn/api/paas/v4/chat/completions', 'key': os.environ.get('GLM_API_KEY', ''), 'provider': 'GLM'},
+    'hunyuan-instruct': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': os.environ.get('HUNYUAN_API_KEY', ''), 'provider': '混元', 'model': 'hunyuan-2.0-instruct-20251111'},
+    'hunyuan-thinking': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': os.environ.get('HUNYUAN_API_KEY', ''), 'provider': '混元', 'model': 'hunyuan-2.0-thinking-20251109'},
 }
 
 

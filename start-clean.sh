@@ -11,6 +11,9 @@ set -e
 SCRIPT_DIR="/vol2/1000/AI专用/所有自动化/轻如烟/scripts"
 cd "$SCRIPT_DIR"
 
+# 加载密钥环境变量（.env 不入库，由部署者填写）
+[ -f .env ] && set -a && source .env && set +a
+
 echo "[1/3] 停止所有守护脚本..."
 pkill -f watchdog.sh 2>/dev/null || true
 pkill -f health-loop.sh 2>/dev/null || true

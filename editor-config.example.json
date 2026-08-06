@@ -1,0 +1,19 @@
+{
+  "_说明": "轻如烟编辑器配置模板。拷贝为 editor-config.json 后填写本机路径（换机器只改这个文件）。",
+  "LIGHT_SMOKE_DIR": "/your/path/轻如烟",
+  "ALL_AUTO_DIR": "/your/path/所有自动化",
+  "BROWSE_ROOT": "/your/path",
+  "DATA_DIR": "/your/openclaw/home/agents/main/sessions",
+  "EDITOR_PORT": 18888,
+  "HTTPS_PORT": null,
+  "HTTPS_CERT": null,
+  "HTTPS_KEY": null,
+  "GATEWAY_HOST": "127.0.0.1",
+  "GATEWAY_TOKEN": null,
+  "OPENCLAW_HOME": "/your/openclaw/home",
+  "IDENTITY_PATH": null,
+  "WORKSPACE": "/your/workspace",
+  "INJECT_LOCK_DIR": null,
+  "BACKUP_DIR": null,
+  "MOMO_DIR": null
+}
