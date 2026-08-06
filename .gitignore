@@ -33,3 +33,9 @@ __pycache__/
 # ═══ 他人仓库副本 ═══
 sandglass_source/
 edit-web-github/
+
+# ═══ 备份类文件补充规则 ═══
+*.backup.*
+*.old.*
+*.covered-*
+*.bak.*
