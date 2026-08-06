@@ -54,6 +54,9 @@ for f in "${FILES[@]}"; do
   cp -r "$f" "$STAGE/$(dirname "$f")/" 2>/dev/null || true
 done
 
+# ── 2.5 暂存区垃圾清理（cp -r 会带进 __pycache__/bak，这里剔除）──
+find "$STAGE" \( -name '__pycache__' -o -name '*.pyc' -o -name '*.bak*' -o -name '*.log' -o -name '.DS_Store' \) -exec rm -rf {} + 2>/dev/null || true
+
 # ── 3. 密钥扫描（命中即中止）─────────────────────────────────────
 if [ "${1:-}" != "--skip-scan" ]; then
   echo "── 密钥扫描 ──"
