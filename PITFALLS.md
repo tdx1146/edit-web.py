@@ -300,3 +300,39 @@ fi
 ---
 
 _此文档应定期更新，记录所有踩坑和解决方案。_
+
+---
+
+## F180：AI 回复不显示（编辑器刷新无效）— 2026-08-07
+
+### 现象
+OpenClaw 里 AI 已回复，但编辑器点刷新按钮（对话框旁 + 页码右侧）都不显示回复内容。
+
+### 根因
+`static/js/render.js` 的 `renderPage()` 哈希缓存 bug：
+- `pairHash(store)` 只计算**当前页**的哈希（`store.pairs[store.currentPage]`）
+- 用户停留在旧页（currentPage=0），AI 回复写入后 `totalPages` 增加
+- 但当前页哈希没变 → `hash === _lastRenderHash` → 直接 return 不重渲染
+- 结果：刷新后看不到新回复（停在旧页 + 哈希未变跳过渲染）
+
+### 修复（render.js）
+```javascript
+// 检测"总页数增加"（新消息到达）→ 自动跳到最新页并强制重渲染
+if (store.totalPages > store._lastRenderedPages && store.currentPage === 0) {
+    store.currentPage = store.totalPages - 1;
+}
+store._lastRenderedPages = store.totalPages;
+```
+- 新消息到达 + 用户在初始页 → 自动跳到最新页
+- 用户主动翻到旧页（currentPage>0）→ 不打扰
+
+### 相关
+- 备份：`static/js/render.js.bak-20260807`
+- 同批修复：F178（fire-and-forget 消息丢失）、F179（消息跑偏 global）
+
+---
+
+**维护日志：**
+- 2026-08-07：记录 F180（渲染刷新 bug）+ F178/F179 修复记录
+- 2026-08-02：创建文档，记录会话膨胀问题（F177）
+- 2026-08-01：编辑器截断bug、手机embed服务配置
