@@ -69,7 +69,13 @@ def hooks_url() -> str:
 def wake(text: str = '', mode: str = 'next-heartbeat',
          dry_run: bool = False, hooks_url_override: str = '',
          token: str = '', timeout: int = _TIMEOUT) -> dict:
-    """POST /hooks/wake 唤醒主 AI。全 fail-open，返回结果 dict。
+    """POST /hooks/wake 唤醒主 AI（A 通道）。全 fail-open，返回结果 dict。
+
+    ★ 2026-08-07 已知限制（空转根因）：A 通道的 text 只入队系统事件，
+    要等主会话下一次 run（用户消息/心跳 poll）才被拾取注入；主会话
+    完全空闲时事件积压，woke=True 但用户零感知（06:00-10:50 实测
+    20+ 次 200 零注入）。主通道请用 wake_editor()（B 通道 chat.send），
+    本函数保留作 fallback。
 
     dry_run=True：只构造并返回将发送的请求信息，不真实发送。
     返回 dict 字段：ok / attempted / dry_run / mode / text_len / url /
@@ -117,6 +123,60 @@ def wake(text: str = '', mode: str = 'next-heartbeat',
                     result['resp'] = resp.read(512).decode('utf-8', 'replace')[:200]
                 except Exception:
                     pass
+    except Exception as e:
+        result['error'] = f'{type(e).__name__}: {e}'
+    return result
+
+
+def wake_editor(text: str = '', session_key: str = 'agent:main:main',
+                dry_run: bool = False, timeout: int = 30) -> dict:
+    """B 通道：编辑器 chat.send 注入（生产已验证，守夜/自问脚本同款）。
+
+    2026-08-07 空转修复：A 通道（/hooks/wake）的 text 只入队系统事件，
+    主会话空闲时事件积压无人消费 → woke=True 但零感知。B 通道直接调
+    inject-helper.mjs 发 chat.send → 消息作为真实 user 消息进主会话，
+    必然触发一次 run → 主 AI 真正看到唤醒内容。
+
+    返回 dict：ok / attempted / dry_run / text_len / method / error / ts。
+    """
+    result = {
+        'ok': False,
+        'attempted': not dry_run,
+        'dry_run': bool(dry_run),
+        'method': 'chat.send',
+        'text_len': len(text or ''),
+        'error': None,
+        'ts': _now_iso(),
+    }
+    if dry_run:
+        result['ok'] = True
+        return result
+    if not (text or '').strip():
+        result['error'] = 'empty_text'
+        return result
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'inject-helper.mjs')
+    if not os.path.exists(helper):
+        result['error'] = f'inject-helper.mjs not found: {helper}'
+        return result
+    try:
+        import subprocess
+        p = subprocess.run(
+            ['node', helper, session_key, text, 'send'],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if p.returncode != 0:
+            result['error'] = f'inject_exit_{p.returncode}: {(p.stderr or "")[:120]}'
+            return result
+        out = (p.stdout or '').strip()
+        try:
+            parsed = json.loads(out)
+            result['ok'] = bool(parsed.get('ok'))
+            if not result['ok']:
+                result['error'] = str(parsed.get('error') or 'inject_ng')[:120]
+        except Exception:
+            result['ok'] = 'ok' in out.lower()
+            result['error'] = None if result['ok'] else (out[:120] or 'inject_unknown')
     except Exception as e:
         result['error'] = f'{type(e).__name__}: {e}'
     return result

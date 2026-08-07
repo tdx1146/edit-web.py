@@ -7,9 +7,15 @@ self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自�
 
 v2.1 新增（自主唤醒架构）：漂移告警出口从"写 sandglass+总线"扩展为
   告警 → salience_gate 判定 → sleep_pressure 体力检查 → wake_client
-  POST /hooks/wake 唤醒主 AI（text=first_sight 醒来第一眼摘要，
-  mode=next-heartbeat 保守）；低优先级（新待办）只记录不唤醒。
+  POST /hooks/wake 唤醒主 AI（text=first_sight 醒来第一眼摘要）。
+  低优先级（新待办）只记录不唤醒。
   SELF_PULSE_WAKE=0 可整体禁用；SELF_PULSE_WAKE_MODE=now 可立即唤醒。
+
+v2.3 修复（2026-08-07 04:46 空转诊断）：默认唤醒模式 next-heartbeat → now。
+  根因：next-heartbeat 只入队系统事件、等下一次自然心跳（默认 30m 间隔，
+  主会话 busy 时被跳过），事件积压不可见 → 链上 woke=true 但主会话零感知。
+  实测 mode=now 在 8 分钟内注入成功（04:38 发 → 04:46 进心跳 poll）。
+  刹车仍全生效：冷却 10min + W 累积 + 交互相位门（dandan 在线时不打扰）。
 
 v2.2 调整（2026-08-06 醒来自主行动）：唤醒条件从"仅漂移告警边沿触发"改为
   级别触发——salient 判定通过即唤醒（慢性高熵无边沿，原守卫永不触发）。
@@ -70,7 +76,7 @@ try:
     from salience_gate import judge as salience_judge
     from sleep_pressure import check as sleep_check
     from first_sight import build as build_first_sight
-    from wake_client import wake as wake_main
+    from wake_client import wake_editor as wake_main   # B 通道（2026-08-07）
     _WAKE_MODULES_OK = True
 except Exception:
     _WAKE_MODULES_OK = False
@@ -306,11 +312,10 @@ def attempt_wake(drift_alert: str, metrics: dict, rnd: int,
     try:
         text = build_first_sight()
         out['text_len'] = len(text)
-        wr = wake_main(text, mode=os.environ.get('SELF_PULSE_WAKE_MODE',
-                                                 'next-heartbeat'),
-                       dry_run=dry_run)
+        wr = wake_main(text, dry_run=dry_run)
         out['woke'] = bool(wr.get('ok'))
-        out['wake_status'] = wr.get('status')
+        out['wake_status'] = wr.get('status') or (200 if wr.get('ok') else None)
+        out['wake_channel'] = 'chat.send'
         out['wake_error'] = (wr.get('error') or '')[:120]
         out['reason'] = 'woke' if wr.get('ok') else f'wake_failed:{out["wake_error"]}'
     except Exception as e:
