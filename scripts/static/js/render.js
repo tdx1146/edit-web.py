@@ -634,20 +634,27 @@ function renderPage() {
   var el = document.getElementById('messages');
   if (!el) return;
 
-  // 🔧 修复 2026-08-07：新消息到达时自动跳到最新页并强制重渲染
-  // 旧逻辑：pairHash 只算当前页，当前页没变就直接 return，
-  // 导致 AI 回复到达后用户点刷新看不到内容（停在旧页且哈希未变）。
-  if (store.totalPages > 0 && typeof store._lastRenderedPages !== 'undefined' &&
-      store.totalPages > store._lastRenderedPages &&
-      store.currentPage === 0 && store.pairs.length > 1) {
-    // 新消息到达且用户在最旧页——跳到最新页显示新回复
-    store.currentPage = store.totalPages - 1;
-    store._lastRenderedPages = store.totalPages;
-  }
-  if (typeof store._lastRenderedPages === 'undefined') {
-    store._lastRenderedPages = store.totalPages;
+  // 🔧 修复 2026-08-07 v2：AI 回复可能追加到已有 pair（totalPages 不变），
+  // 旧逻辑 pairHash 只算当前页导致跳过重渲染。
+  // 方案：比较 pairHash 的同时，检测最新一条 user 的 assistants 数量变化
+  // （AI 回复到达 = 最新 pair 的 assistants 增加），变化则强制跳到最新页重渲染。
+  if (store.pairs.length > 0) {
+    var latestPair = store.pairs[store.pairs.length - 1];
+    var asstLen = latestPair && latestPair.assistants ? latestPair.assistants.length : 0;
+    if (typeof store._lastAsstLen === 'undefined') {
+      store._lastAsstLen = asstLen;
+    } else if (asstLen > store._lastAsstLen) {
+      // 最新 pair 有新 assistant 回复 → 跳到最新页并强制渲染
+      store.currentPage = store.totalPages - 1;
+      window._lastRenderHash = '';  // 强制重渲染
+    }
+    store._lastAsstLen = asstLen;
   }
 
+  // 🔍 调试：打印渲染状态（排查刷新不显示问题，可删）
+  if (window._dbgRender) {
+    console.log('[renderPage]', {page: store.currentPage, total: store.totalPages, pairs: store.pairs.length, lastAsst: store._lastAsstLen, hash: pairHash(store).slice(0,60)});
+  }
   var hash = pairHash(store);
   if (hash === _lastRenderHash) {
     // 内容没变，只更新计数和分页（可能翻页键状态变了）
@@ -656,7 +663,6 @@ function renderPage() {
     return;
   }
   _lastRenderHash = hash;
-  store._lastRenderedPages = store.totalPages;
   
   var pc = document.getElementById('msgCount');
   
