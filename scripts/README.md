@@ -166,3 +166,45 @@ python3 edit-web.py
 - `../.locks/.inject_lock` — 注入锁文件
 - `../memory/` — 轮感/记忆文件
 - `../scripts/edit-web-backups/` — 编辑截断自动备份
+
+---
+
+## 六、踩坑记录（2026-08-07 更新）
+
+### 🔧 F180：AI 回复不显示（刷新无效）
+
+**现象**：OpenClaw 里 AI 已回复，但编辑器点刷新按钮（对话框旁 + 页码右侧）都不显示回复内容。
+
+**根因**：`static/js/render.js` 的 `renderPage()` 哈希缓存 bug：
+- `pairHash(store)` 只计算**当前页**的哈希（`store.pairs[store.currentPage]`）
+- 用户停留在旧页（currentPage=0），AI 回复写入后 `totalPages` 增加
+- 但当前页哈希没变 → `hash === _lastRenderHash` → **直接 return，不重渲染**
+- 结果：刷新后看不到新回复（停在旧页 + 哈希未变跳过渲染）
+
+**修复**（render.js）：
+```javascript
+// 检测"总页数增加"（新消息到达）→ 自动跳到最新页并强制重渲染
+if (store.totalPages > store._lastRenderedPages && store.currentPage === 0) {
+    store.currentPage = store.totalPages - 1;
+}
+```
+- 新消息到达 + 用户在初始页 → 自动跳到最新页 ✅
+- 用户主动翻到旧页（currentPage>0）→ 不打扰 ✅
+
+**备份**：`static/js/render.js.bak-20260807`
+
+### 🔧 F179：编辑器消息跑偏到 global 会话（已修）
+
+**根因**：`get_session_info()` 默认用 `agent:main:main`，OpenClaw 配置 `session.scope=global` 时网关把 main 别名规范化为 global 容器 → 消息落进 global 而非主对话。
+
+**修复**：`get_session_info()` 排除系统容器键（global/unknown/cron/subagent），优先选 `origin.provider=webchat` 的最新 dashboard 会话；前端 inject 显式传 sessionKey。
+
+### 🔧 F178：消息丢失（fire-and-forget）
+
+**根因**：inject-helper.mjs 的 chat.send 不等 gateway 确认就返回成功，事件循环阻塞时消息帧丢失但界面显示成功。
+
+**修复**：改为等待 gateway RPC res 确认（3s 超时），失败返回 ok:false 可重试。
+
+### 🔧 F177：会话膨胀导致消息丢失（妹妹 8/2 记录）
+
+详见 GitHub PITFALLS.md（会话历史膨胀 → 内存泄漏 → 消息未持久化）。

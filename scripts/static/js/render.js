@@ -633,7 +633,21 @@ var p = st.pairs[st.currentPage];
 function renderPage() {
   var el = document.getElementById('messages');
   if (!el) return;
-  
+
+  // 🔧 修复 2026-08-07：新消息到达时自动跳到最新页并强制重渲染
+  // 旧逻辑：pairHash 只算当前页，当前页没变就直接 return，
+  // 导致 AI 回复到达后用户点刷新看不到内容（停在旧页且哈希未变）。
+  if (store.totalPages > 0 && typeof store._lastRenderedPages !== 'undefined' &&
+      store.totalPages > store._lastRenderedPages &&
+      store.currentPage === 0 && store.pairs.length > 1) {
+    // 新消息到达且用户在最旧页——跳到最新页显示新回复
+    store.currentPage = store.totalPages - 1;
+    store._lastRenderedPages = store.totalPages;
+  }
+  if (typeof store._lastRenderedPages === 'undefined') {
+    store._lastRenderedPages = store.totalPages;
+  }
+
   var hash = pairHash(store);
   if (hash === _lastRenderHash) {
     // 内容没变，只更新计数和分页（可能翻页键状态变了）
@@ -642,6 +656,7 @@ function renderPage() {
     return;
   }
   _lastRenderHash = hash;
+  store._lastRenderedPages = store.totalPages;
   
   var pc = document.getElementById('msgCount');
   
