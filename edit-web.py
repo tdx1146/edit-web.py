@@ -260,8 +260,23 @@ def inject_via_websocket(session_key, message, bypass_lock=False):
         _cleanup_lock()
         if r.returncode == 0:
             return {"ok": True}
-        else:
-            return {"ok": False, "error": f"inject exit {r.returncode}"}
+        # 2026-08-07 吞消息修复：gateway event loop 忙时 ack 超时（3s 撞上
+        # 1.8-2.8s 延迟+排队）。重试一次（总超时翻倍），仍失败才报错。
+        if r.returncode != 0 and not bypass_lock:
+            try:
+                logf2 = open(os.path.join(os.path.dirname(helper), '.inject_logs', f"inject_retry_{int(time.time())}.log"), 'w')
+            except Exception:
+                logf2 = subprocess.DEVNULL
+            r2 = subprocess.run(
+                [path('BUN_BIN'), helper, session_key, message],
+                stdout=logf2, stderr=subprocess.STDOUT,
+                env=env, timeout=timeout, capture_output=False
+            )
+            _cleanup_lock()
+            if r2.returncode == 0:
+                return {"ok": True}
+            return {"ok": False, "error": f"inject exit {r2.returncode} (after retry)"}
+        return {"ok": False, "error": f"inject exit {r.returncode}"}
     except subprocess.TimeoutExpired:
         _cleanup_lock()
         return {"ok": False, "error": "inject timeout"}
@@ -461,6 +476,27 @@ def get_session_info():
     global _active_editor_session_key
     target_key = _active_editor_session_key
     store = {}
+
+    # ★ 2026-08-10 dandan 拍板：编辑器固定走独立会话「轻如烟」
+    #   配置 EDITOR_FIXED_SESSION 后，编辑器永远发往该会话，不再和主对话抢队列
+    #   （消息被吞根因：主会话 model_call 卡 100-290s，编辑器 WS 等不起断开）
+    fixed_key = _cfg('EDITOR_FIXED_SESSION') or os.environ.get('EDITOR_FIXED_SESSION')
+    if fixed_key:
+        # 兼容两种写法："轻如烟" 或完整 "agent:main:轻如烟"
+        if ':' not in fixed_key:
+            fixed_key = f"agent:main:{fixed_key}"
+        # 2026-08-10 修复：必须返回真实 sessionFile，否则前端 /api/ping
+        # 的 msgCount=0 → 永远不刷新（dandan 实测"发了消息没反应"）
+        try:
+            with open(os.path.join(DATA_DIR, "sessions.json")) as _f:
+                _store = json.load(_f)
+            _entry = _store.get(fixed_key) or {}
+            _sf = _entry.get("sessionFile") or ""
+            if _sf and os.path.exists(_sf):
+                return fixed_key, _sf
+        except Exception:
+            pass
+        return fixed_key, None  # sessionFile 由调用方按 key 解析；不存在时发送层新建会话
 
     # 优先：从 sessions.json 查找
     store_file = os.path.join(DATA_DIR, "sessions.json")

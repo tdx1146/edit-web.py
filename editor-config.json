@@ -15,5 +15,6 @@
   "WORKSPACE": "/vol1/@apphome/trim.openclaw/data/workspace",
   "INJECT_LOCK_DIR": null,
   "BACKUP_DIR": null,
-  "MOMO_DIR": null
+  "MOMO_DIR": null,
+  "EDITOR_FIXED_SESSION": "轻如烟"
 }
