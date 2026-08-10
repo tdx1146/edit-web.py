@@ -24,6 +24,13 @@ salience_gate.py — 显著性判据（B 判据保守版，2026-08-06）
   /vol2/1000/AI专用/所有自动化/轻如烟/sandglass/salience_state.json
   （环境变量 SP_SALIENCE_STATE_FILE 可覆盖；NEXSANDBASE_HOME 优先）
 
+梦惊讶度第 4 通道（梦醒回路阶段1-C，断点 B 修复，默认关）：
+  SG_DREAM_FEED=0（默认）→ 不读不判，行为与改造前完全一致（零回归）；
+  SG_DREAM_FEED=1 → 读 ${NEXSANDBASE_HOME}/dream_state.json 的最近一次
+  avg_surprise（DREAM_STATE_FILE 可覆盖），新鲜度 <1h 才有效，独立
+  dream_surprise_window（不污染对话 surprise_window），z-score ≥ 均值+2σ
+  触发 → 以 DREAM_W 权重加入 score。读不到/过期 = 无梦信号不判（fail-open）。
+
 用法：
     from salience_gate import judge
     v = judge('anomaly', metrics={...})     # metrics 可注入；None 时自采
@@ -50,6 +57,16 @@ _SANDBASE = os.environ.get('NEXSANDBASE_HOME') or os.path.join(
 _STATE_FILE = os.environ.get('SP_SALIENCE_STATE_FILE',
                              os.path.join(_SANDBASE, 'salience_state.json'))
 _LMS_URL = os.environ.get('SELF_PULSE_LMS_URL', 'http://127.0.0.1:8190/status/main')
+
+# 梦惊讶度第 4 通道（梦醒回路阶段1-C）：SG_DREAM_FEED 默认关（零行为变化）
+_DREAM_STATE_FILE = os.environ.get(
+    'DREAM_STATE_FILE',
+    os.path.join(_SANDBASE, 'dream_state.json'),  # 与 salience_state 同目录（契约路径，红线2）
+)
+DREAM_FEED = os.environ.get('SG_DREAM_FEED', '0').strip().lower() in \
+    ('1', 'true', 'yes', 'on')
+DREAM_W = float(os.environ.get('SG_DREAM_W', '0.25'))        # 第 4 通道权重
+DREAM_FRESH_MAX = float(os.environ.get('SG_DREAM_FRESH_MAX', '3600'))  # 新鲜度 <1h
 
 # 判据阈值（保守起步，全部 env 可覆盖）
 SURPRISE_WINDOW = int(os.environ.get('SG_WINDOW', '20'))      # 近期窗口
@@ -91,6 +108,10 @@ def load_state(path: str = '') -> dict:
         'last_verdict': None,
         'updated_at': _now_iso(),
     }
+    if DREAM_FEED:
+        # 梦通道独立窗口（仅开启时入状态，保证默认关下状态文件结构零变化）
+        st['dream_surprise_window'] = []
+        st['dream_last_ts'] = None
     try:
         with open(path, encoding='utf-8') as f:
             data = json.load(f)
@@ -153,6 +174,60 @@ def _z_flag(surprise: float, window: list) -> tuple:
     return z >= SURPRISE_Z_MIN, round(z, 2)
 
 
+def _parse_dream_ts(ts) -> float:
+    """解析 dream_state.json 的 t 字段（ISO8601，如 2026-08-11T00:53:42.656610+08:00）。"""
+    if not ts:
+        raise ValueError('empty ts')
+    return datetime.fromisoformat(str(ts)).timestamp()
+
+
+def _dream_feed_step(st: dict) -> tuple:
+    """梦惊讶度通道（SG_DREAM_FEED=1 时由 judge 调用）：读 dream_state.json（fail-open）。
+
+    - 只在 dream_state.json 更新（t 变化）时把 avg_surprise 追加进**独立窗口**
+      （不每脉冲追加——防窗口被同一常数刷满，这是断点 B 根因教训）
+    - 新鲜度 <1h 才有效；文件缺失/过期/解析失败 → 清空窗口不判（fail-open 保守）
+    - status != 'dreamed'（如 no_memories_to_replay）→ 不追加不判（0.0 无意义）
+    - z 判定沿用 _z_flag（≥均值+2σ 且 σ>0 才判）
+
+    返回 (dream_novelty_flag, dream_z)。
+    """
+    try:
+        with open(_DREAM_STATE_FILE, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        st['dream_surprise_window'] = []
+        st['dream_last_ts'] = None
+        return False, None
+    latest = data.get('latest') or {}
+    if not isinstance(latest, dict) or not latest.get('t'):
+        st['dream_surprise_window'] = []
+        st['dream_last_ts'] = None
+        return False, None
+    try:
+        age = time.time() - _parse_dream_ts(latest.get('t'))
+        fresh = 0 <= age < DREAM_FRESH_MAX
+    except Exception:
+        fresh = False
+    if not fresh or latest.get('status') != 'dreamed':
+        st['dream_surprise_window'] = []
+        st['dream_last_ts'] = None
+        return False, None
+    sur = latest.get('avg_surprise')
+    if sur is None:
+        st['dream_surprise_window'] = []
+        st['dream_last_ts'] = None
+        return False, None
+    window = list(st.get('dream_surprise_window') or [])
+    ts = str(latest.get('t'))
+    if st.get('dream_last_ts') != ts:
+        window = (window + [float(sur)])[-SURPRISE_WINDOW:]
+        st['dream_last_ts'] = ts
+    flag, z = _z_flag(float(sur), window)
+    st['dream_surprise_window'] = window
+    return flag, z
+
+
 def judge(event_type: str = 'routine', metrics: dict = None,
           dry_run: bool = False, state: dict = None) -> dict:
     """显著性判定（每脉冲调用一次以维护窗口/连续计数/边沿）。
@@ -176,6 +251,9 @@ def judge(event_type: str = 'routine', metrics: dict = None,
     window = list(st.get('surprise_window') or [])
     entropy_streak = 0
     purpose_streak = 0
+    # 梦惊讶度第 4 通道（默认关：不读不判，零回归）
+    dream_novelty = False
+    dream_z = None
 
     if m is None:
         # 无法测量：窗口清空、计数归零、不判（宁可漏报不可误报）
@@ -197,8 +275,14 @@ def judge(event_type: str = 'routine', metrics: dict = None,
             purpose_streak = 0
         salience = entropy_streak >= MIN_STREAK or purpose_streak >= MIN_STREAK
 
+    # 梦惊讶度第 4 通道（SG_DREAM_FEED=1 时启用；独立窗口，不污染对话窗口）
+    if DREAM_FEED:
+        dream_novelty, dream_z = _dream_feed_step(st)
+
     goal = event_weight(event_type)
     score = W_NOVELTY * float(novelty) + W_SALIENCE * float(salience) + W_GOAL * goal
+    if DREAM_FEED:
+        score += DREAM_W * float(dream_novelty)
     hard = (event_type == 'anomaly' and ANOMALY_BYPASS)
     salient = hard or score > SCORE_THRESHOLD
     rising_edge = salient and not st.get('last_salient')
@@ -218,13 +302,18 @@ def judge(event_type: str = 'routine', metrics: dict = None,
         'lms_ok': m is not None,
         'ts': _now_iso(),
     }
+    if DREAM_FEED:
+        verdict['dream_novelty'] = dream_novelty
+        verdict['dream_z'] = dream_z
 
     st['surprise_window'] = window
     st['entropy_streak'] = entropy_streak
     st['purpose_streak'] = purpose_streak
     st['last_salient'] = salient
-    st['last_verdict'] = {k: verdict[k] for k in
-                          ('salient', 'score', 'novelty', 'salience', 'goal')}
+    _lk = ('salient', 'score', 'novelty', 'salience', 'goal')
+    if DREAM_FEED:
+        _lk = _lk + ('dream_novelty',)
+    st['last_verdict'] = {k: verdict[k] for k in _lk}
     save_state(st, dry_run=dry_run)
     return verdict
 
