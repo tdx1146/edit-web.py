@@ -71,11 +71,12 @@ def wake(text: str = '', mode: str = 'next-heartbeat',
          token: str = '', timeout: int = _TIMEOUT) -> dict:
     """POST /hooks/wake 唤醒主 AI（A 通道）。全 fail-open，返回结果 dict。
 
-    ★ 2026-08-07 已知限制（空转根因）：A 通道的 text 只入队系统事件，
-    要等主会话下一次 run（用户消息/心跳 poll）才被拾取注入；主会话
-    完全空闲时事件积压，woke=True 但用户零感知（06:00-10:50 实测
-    20+ 次 200 零注入）。主通道请用 wake_editor()（B 通道 chat.send），
-    本函数保留作 fallback。
+    ★ 2026-08-07 实证更新：heartbeat target:last 修复后 A 通道端到端已通
+    （19:34:29 POST /hooks/wake → 19:36:10 心跳 poll 消费，main session
+    65ce6954 记录在案）。A 通道已恢复为主通道（self_pulse_cli 同日改回）。
+    此前 06:00-10:50 "20+ 次 200 零注入" 根因是 heartbeat 默认 target:none
+    不投递，非 A 通道本身问题。wake_editor()（B 通道 chat.send）保留作
+    fallback，修好 GATEWAY_TOKEN 环境后可启用。
 
     dry_run=True：只构造并返回将发送的请求信息，不真实发送。
     返回 dict 字段：ok / attempted / dry_run / mode / text_len / url /
@@ -160,9 +161,19 @@ def wake_editor(text: str = '', session_key: str = 'agent:main:main',
         result['error'] = f'inject-helper.mjs not found: {helper}'
         return result
     try:
+        import shutil
         import subprocess
+        # 2026-08-07 修复：crontab 环境 PATH 无 node（实测 FileNotFoundError:
+        # 'node'），唤醒链 13:00-13:30 三次 wake_failed。显式解析 node 绝对路径
+        # （NAS 上 node 在 /vol1/@appcenter/nodejs_v24/bin/node）。
+        node_bin = shutil.which('node') or '/vol1/@appcenter/nodejs_v24/bin/node'
+        if not os.path.exists(node_bin):
+            node_bin = shutil.which('nodejs') or ''
+        if not node_bin or not os.path.exists(node_bin):
+            result['error'] = 'node_bin_not_found'
+            return result
         p = subprocess.run(
-            ['node', helper, session_key, text, 'send'],
+            [node_bin, helper, session_key, text, 'send'],
             capture_output=True, text=True, timeout=timeout,
         )
         if p.returncode != 0:

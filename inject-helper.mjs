@@ -352,7 +352,9 @@ async function main() {
     // may be sent but never processed while the UI already shows success → message loss.
     // Fix: wait for the RPC `res` frame (gateway confirms receipt/handling). Timeout 3s
     // (>2.9s peak block). On timeout report failure + exit non-zero so edit-web.py can retry.
-    const SEND_ACK_TIMEOUT_MS = 3000;
+    // 2026-08-07：主会话长回合时 event loop 延迟实测峰值 2.8s+（10:54 实测
+    // 吞消息根因：3s 超时撞上 1.8-2.8s 延迟 + 排队 → 消息丢失）。放宽到 15s。
+    const SEND_ACK_TIMEOUT_MS = 15000;
     const ackDeadline = Date.now() + SEND_ACK_TIMEOUT_MS;
     let acked = false;
     while (Date.now() < ackDeadline) {

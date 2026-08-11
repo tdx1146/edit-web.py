@@ -1,14 +1,24 @@
 #!/bin/bash
 # 干净的编辑器启动脚本
 # 用途：停止所有守护脚本并启动编辑器的 web 服务
-# 创建：2026-06-26
+# 创建：2026-06-26 / 2026-08-10 部署统一化（零硬编码：路径/端口读配置或相对推导）
 #
 # 用法：
 #   bash start-clean.sh
 
 set -e
 
-SCRIPT_DIR="/vol2/1000/AI专用/所有自动化/轻如烟/scripts"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIGHT_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
+_AGENT_OS="${AGENT_OS_HOME:-}"
+if [ -z "$_AGENT_OS" ] && [ -d "$LIGHT_HOME/../Agent OS" ]; then
+    _AGENT_OS="$(cd "$LIGHT_HOME/../Agent OS" && pwd)"
+fi
+if [ -n "$_AGENT_OS" ] && [ -f "$_AGENT_OS/env.local" ]; then
+    set -a; . "$_AGENT_OS/env.local"; set +a
+fi
+EDITOR_HOME="${EDITOR_HOME:-$LIGHT_HOME/scripts}"
+EDITOR_PORT="${EDITOR_PORT:-18888}"
 cd "$SCRIPT_DIR"
 
 # 加载密钥环境变量（.env 不入库，由部署者填写）
@@ -19,18 +29,18 @@ pkill -f watchdog.sh 2>/dev/null || true
 pkill -f health-loop.sh 2>/dev/null || true
 pkill -f health-check.sh 2>/dev/null || true
 
-echo "[2/3] 释放端口 18888..."
-kill -9 $(lsof -ti :18888) 2>/dev/null || true
+echo "[2/3] 释放端口 $EDITOR_PORT..."
+kill -9 $(lsof -ti :"$EDITOR_PORT") 2>/dev/null || true
 sleep 2
 
 echo "[3/3] 启动编辑器..."
-nohup python3 edit-web.py > /tmp/edit-web-clean.log 2>&1 &
+nohup python3 "$EDITOR_HOME/edit-web.py" > /tmp/edit-web-clean.log 2>&1 &
 PID=$!
 echo "编辑器已启动 PID=$PID"
 
 # 等待 5 秒验证
 sleep 5
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18888/ 2>/dev/null || echo "FAIL")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$EDITOR_PORT/" 2>/dev/null || echo "FAIL")
 echo "HTTP 状态: $HTTP_CODE"
 echo "日志: tail -f /tmp/edit-web-clean.log"
 

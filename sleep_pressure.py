@@ -61,6 +61,27 @@ DEDUP_TTL_DAYS = float(os.environ.get('SP_DEDUP_TTL_DAYS', '7'))   # 去重游�
 DEDUP_MAX = 200
 HISTORY_MAX = 20
 
+# ── 安静期 & 每日预算（2026-08-07 dandan 拍板：省 token）──
+# 2026-08-10 夜间权重版（dandan 拍板：DeepSeek 夜间 00:30-08:30 折扣，
+# 白天贵、晚上便宜 → 额度向夜间倾斜，夜间多干活多成长）：
+#   - 夜间窗口（SP_NIGHT_START~SP_NIGHT_END，默认 00:30-08:30）：额度 SP_NIGHT_CAP（默认 8）
+#   - 白天其余时段：额度 SP_DAY_CAP（默认 2，应急用）
+#   - 安静窗口（SP_QUIET_START~SP_QUIET_END，默认 08:30-18:00）：常规唤醒闭嘴（省 token）；
+#     夜间折扣窗口（00:30-08:30）不在安静窗口内，正常唤醒
+#   - 总量仍受 SP_DAILY_CAP（默认 10）兜底；anomaly 硬告警穿透一切
+QUIET_START = os.environ.get('SP_QUIET_START', '08:30')   # 白天贵时段起
+QUIET_END = os.environ.get('SP_QUIET_END', '18:00')       # 白天贵时段止
+DAILY_CAP = int(os.environ.get('SP_DAILY_CAP', '10'))
+NIGHT_START = os.environ.get('SP_NIGHT_START', '00:30')   # 折扣窗口起（含）
+NIGHT_END = os.environ.get('SP_NIGHT_END', '08:30')       # 折扣窗口止（不含）
+NIGHT_CAP = int(os.environ.get('SP_NIGHT_CAP', '8'))      # 夜间额度（主力成长时段）
+DAY_CAP = int(os.environ.get('SP_DAY_CAP', '2'))          # 白天额度（应急）
+
+
+def _in_window(hhmm: str, start: str, end: str) -> bool:
+    """判断 HH:MM 是否在 [start, end) 窗口内（支持跨午夜）。"""
+    return (start <= hhmm < end) if start <= end else (hhmm >= start or hhmm < end)
+
 # ── 交互相位门（Phase gate，2026-08-06 dandan 设计）──
 # 人类不打扰正在上班的人：用户最近有输入时，自主唤醒应闭嘴（排队到空闲）。
 IDLE_MINUTES = float(os.environ.get('SP_IDLE_MIN', '30'))          # 最近交互判定窗口
@@ -76,6 +97,16 @@ def detect_interactive(now: float = None, session_dir: str = '') -> bool:
         newest = 0.0
         for name in os.listdir(d):
             if not name.endswith('.jsonl') or 'trajectory' in name:
+                continue
+            # 只统计主会话（agent:main:main）；子代理/心跳等其他会话文件
+            # 不算用户交互，避免误判抑制（2026-08-07 修复）
+            try:
+                with open(os.path.join(d, name), encoding='utf-8',
+                          errors='replace') as f:
+                    first = f.readline()
+                if 'agent:main:main' not in first:
+                    continue
+            except Exception:
                 continue
             p = os.path.join(d, name)
             try:
@@ -118,6 +149,8 @@ def default_state() -> dict:
         'total_wakes': 0,
         'total_suppressed': 0,
         'total_overrides': 0,
+        'daily': {'date': '', 'count': 0, 'night_count': 0, 'day_count': 0},
+        # 2026-08-10 夜间权重：night_count=夜间(00:30-08:30)唤醒数，day_count=白天数
         'updated_at': _now_iso(),
     }
 
@@ -135,6 +168,12 @@ def load_state(path: str = '') -> dict:
                     st[k] = data[k]
             st.setdefault('dedup', {})
             st.setdefault('history', [])
+            # 旧状态兼容：daily 补 night/day 分桶（2026-08-10 夜间权重版）
+            daily = st.get('daily') or {}
+            if 'night_count' not in daily or 'day_count' not in daily:
+                daily.setdefault('night_count', 0)
+                daily.setdefault('day_count', 0)
+                st['daily'] = daily
     except Exception:
         pass
     return st
@@ -231,8 +270,20 @@ def check(event_type: str = 'routine', fingerprint: str = '',
     now = time.time() if now is None else now
     st = update(st, now)
 
-    # 0) 交互相位门：用户最近有输入 → 常规唤醒闭嘴（排队到空闲）；anomaly 穿透
+    # 0) 安静期闸门：白天贵时段（QUIET_START~QUIET_END）常规唤醒闭嘴（省 token）；
+    #    夜间折扣窗口（00:30-08:30）不在安静期内，正常唤醒；anomaly 穿透
     override = (event_type == 'anomaly')
+    if not override:
+        try:
+            hhmm_now = datetime.fromtimestamp(now).strftime('%H:%M')
+            if _in_window(hhmm_now, QUIET_START, QUIET_END):
+                st['total_suppressed'] = st.get('total_suppressed', 0) + 1
+                save_state(st, dry_run=dry_run)
+                return False, 'quiet_hours', st
+        except Exception:
+            pass
+
+    # 0b) 交互相位门：用户最近有输入 → 常规唤醒闭嘴（排队到空闲）；anomaly 穿透
     if interactive is None:
         interactive = detect_interactive(now)
     if interactive and not override:
@@ -263,6 +314,24 @@ def check(event_type: str = 'routine', fingerprint: str = '',
         save_state(st, dry_run=dry_run)
         return False, 'cooldown', st
 
+    # 3.5) 每日预算：按时段分桶（2026-08-10 夜间权重版）；anomaly 穿透
+    #     夜间窗口（DeepSeek 折扣 00:30-08:30）用 NIGHT_CAP（主力成长）；
+    #     白天用 DAY_CAP（应急）；总量再受 DAILY_CAP 兜底。
+    if not override:
+        today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
+        daily = st.get('daily') or {}
+        if daily.get('date') != today:
+            daily = {'date': today, 'count': 0, 'night_count': 0, 'day_count': 0}
+        hhmm = datetime.fromtimestamp(now).strftime('%H:%M')
+        is_night = _in_window(hhmm, NIGHT_START, NIGHT_END)
+        bucket_cap = NIGHT_CAP if is_night else DAY_CAP
+        bucket_count = daily.get('night_count', 0) if is_night else daily.get('day_count', 0)
+        if bucket_count >= bucket_cap or daily.get('count', 0) >= DAILY_CAP:
+            st['total_suppressed'] = st.get('total_suppressed', 0) + 1
+            save_state(st, dry_run=dry_run)
+            return False, 'daily_cap', st
+        st['daily'] = daily
+
     # 4) 放行：记入唤醒成本
     cost = DELTA_W_ACT + (OVERRIDE_COST if override else 0.0)
     st['W'] = st.get('W', 0.0) + cost
@@ -273,6 +342,20 @@ def check(event_type: str = 'routine', fingerprint: str = '',
     st['total_wakes'] = st.get('total_wakes', 0) + 1
     if override:
         st['total_overrides'] = st.get('total_overrides', 0) + 1
+    else:
+        # 每日预算计数（放行成功才计入，分桶：夜间/白天）
+        today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
+        daily = st.get('daily') or {}
+        if daily.get('date') != today:
+            daily = {'date': today, 'count': 0, 'night_count': 0, 'day_count': 0}
+        daily['count'] = daily.get('count', 0) + 1
+        hhmm = datetime.fromtimestamp(now).strftime('%H:%M')
+        is_night = _in_window(hhmm, NIGHT_START, NIGHT_END)
+        if is_night:
+            daily['night_count'] = daily.get('night_count', 0) + 1
+        else:
+            daily['day_count'] = daily.get('day_count', 0) + 1
+        st['daily'] = daily
     history = st.get('history') or []
     history.append({'ts': _now_iso(now), 'event_type': event_type,
                     'cost': round(cost, 3), 'override': override,
@@ -299,6 +382,9 @@ def status(st: dict = None) -> dict:
         'total_suppressed': st.get('total_suppressed', 0),
         'total_overrides': st.get('total_overrides', 0),
         'dedup_count': len(st.get('dedup') or {}),
+        'daily': st.get('daily'),
+        'night_window': f"{NIGHT_START}~{NIGHT_END} (cap={NIGHT_CAP})",
+        'day_cap': DAY_CAP,
     }
 
 
