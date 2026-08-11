@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自主唤醒链 2026-08-06 / v2.2 级别触发唤醒 2026-08-06）
+self_pulse_cli.py — 自主脉冲 CLI（v2 真任务化 2026-08-05 / v2.1 自主唤醒链 2026-08-06 / v2.2 级别触发唤醒 2026-08-06 / v2.4 梦醒回路阶段2-接线 2026-08-11）
 ===========================================================
+
+v2.4 新增（梦醒回路阶段2-接线，2026-08-11）：WAKE_CHANNEL env 开关（默认 a = 现状
+  wake 通道；b = inject/chat.send 通道）。b 通道注入 [梦醒] 模板消息（梦摘要是唯一
+  变量），附加 >2h 节流（防对话污染，记录到 inject_state.json）。红线1：B 通道只在
+  attempt_wake 链内（sleep_check 通过后）触发，self_pulse 内无其他 inject 调用点。
 从"心跳测试"升级为"自主感知引擎"（Phase6 重建版 v1 的继任者）：
 
 v2.1 新增（自主唤醒架构）：漂移告警出口从"写 sandglass+总线"扩展为
@@ -76,7 +81,8 @@ try:
     from salience_gate import judge as salience_judge
     from sleep_pressure import check as sleep_check
     from first_sight import build as build_first_sight
-    from wake_client import wake_editor as wake_main   # B 通道（2026-08-07）
+    from wake_client import wake as _wake_a       # A 通道（/hooks/wake，2026-08-07 主通道）
+    from wake_client import wake_editor as _wake_b  # B 通道（chat.send inject，梦醒回路阶段2）
     _WAKE_MODULES_OK = True
 except Exception:
     _WAKE_MODULES_OK = False
@@ -100,6 +106,119 @@ _BUS_FILE = os.environ.get(
 _LMS_URL = os.environ.get('SELF_PULSE_LMS_URL', 'http://127.0.0.1:8190/status/main')
 _METRICS_FILE = os.path.join(_SANDBASE, 'metrics.jsonl')
 _SAND_FILE = os.path.join(_SANDBASE, 'sandglass.txt')
+
+# ── 梦醒回路阶段2-接线（2026-08-11）：WAKE_CHANNEL env 开关 ─────────────────
+# 默认 'a' = 现状 wake 通道（POST /hooks/wake：System 事件入队 + 心跳轮消费）；
+# 'b' = inject 通道（chat.send 模拟 user 消息直接进主会话 → 立即完整 run，
+# owner 权限 + glue 记忆注入）。非 'b' 一律回落 'a'（fail-safe 保持现状）。
+# ★ 红线1（梦醒回路 v1.1 §4.5）：B 通道只能在 attempt_wake 链内（sleep_check
+# 通过后）触发；本模块无其他 inject 调用点，consumer/其他进程禁止直调 inject。
+WAKE_CHANNEL = os.environ.get('WAKE_CHANNEL', 'a').strip().lower()
+if WAKE_CHANNEL != 'b':
+    WAKE_CHANNEL = 'a'
+
+# B 通道 >2h 节流（防对话污染）：上次注入时间记入 inject_state.json
+#（与 salience_state / sleep_pressure 同目录，NEXSANDBASE_HOME 推导，env 可覆盖）。
+_INJECT_STATE_FILE = os.environ.get(
+    'SELF_PULSE_INJECT_STATE',
+    os.path.join(_SANDBASE, 'inject_state.json'),
+)
+INJECT_THROTTLE_HOURS = float(os.environ.get('SELF_PULSE_INJECT_THROTTLE_H', '2'))
+
+# [梦醒] 模板消息（梦醒回路 v1.1 §5）：梦摘要是唯一变量（防注入面）。
+_DREAM_STATE_FILE = os.environ.get(
+    'DREAM_STATE_FILE',
+    os.path.join(_SANDBASE, 'dream_state.json'),  # 契约路径（红线2），与 salience_gate 同源
+)
+
+
+def wake_main(text: str, mode: str = 'next-heartbeat',
+              dry_run: bool = False) -> dict:
+    """唤醒出口分发：a → A 通道（/hooks/wake，现状）；b → B 通道（chat.send inject）。
+
+    ★ 红线1（梦醒回路 v1.1 §4.5）：B 通道只允许在 attempt_wake 链内
+    （sleep_check 通过后）经本函数触发；本函数不在链外被引用。
+    """
+    if WAKE_CHANNEL == 'b':
+        return _wake_b(text, dry_run=dry_run)   # B 通道无 mode 参数
+    return _wake_a(text, mode=mode, dry_run=dry_run)
+
+
+def load_inject_state() -> dict:
+    """读 inject_state.json（>2h 节流游标）。fail-open：读不到 = 无记录（放行）。"""
+    try:
+        with open(_INJECT_STATE_FILE, encoding='utf-8') as f:
+            st = json.load(f)
+        return st if isinstance(st, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_inject_state(ts_iso: str) -> bool:
+    """原子写 inject_state.json（tmp + rename）。失败返回 False（fail-open）。"""
+    try:
+        tmp = _INJECT_STATE_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'last_inject_at': ts_iso, 'updated_at': _now_iso()},
+                      f, ensure_ascii=False, indent=2)
+        os.replace(tmp, _INJECT_STATE_FILE)
+        return True
+    except Exception:
+        return False
+
+
+def inject_throttle_blocked(now: float = None) -> tuple:
+    """B 通道 >2h 节流判定：距上次注入 ≤ INJECT_THROTTLE_HOURS → 拦截。
+
+    返回 (blocked, reason)。fail-open：状态缺失/损坏 → 不拦截（放行）。
+    """
+    now = time.time() if now is None else now
+    st = load_inject_state()
+    last = st.get('last_inject_at')
+    if not last:
+        return False, ''
+    try:
+        last_ts = datetime.strptime(str(last)[:19], '%Y-%m-%dT%H:%M:%S').timestamp()
+        age_h = (now - last_ts) / 3600.0
+    except Exception:
+        return False, ''
+    if age_h < INJECT_THROTTLE_HOURS:
+        return True, (f'inject_throttle:{INJECT_THROTTLE_HOURS}h '
+                      f'(last={last}, age={age_h:.1f}h)')
+    return False, ''
+
+
+def build_dream_wake_text() -> str:
+    """[梦醒] 注入消息模板（v1.1 §5 重写版）：梦摘要是唯一变量。
+
+    梦摘要 = dream_state.json 的 latest（avg_surprise / j_change / collapse_count），
+    取不到 → "后台做梦完成"。全 fail-open。
+    """
+    summary = '后台做梦完成'
+    try:
+        with open(_DREAM_STATE_FILE, encoding='utf-8') as f:
+            data = json.load(f)
+        latest = (data or {}).get('latest') or {}
+        if isinstance(latest, dict) and latest.get('t'):
+            parts = []
+            if latest.get('avg_surprise') is not None:
+                parts.append(f'avg_surprise={float(latest["avg_surprise"]):.2f}')
+            if latest.get('j_change') is not None:
+                parts.append(f'j_change={float(latest["j_change"]):.2f}')
+            if latest.get('collapse_count') is not None:
+                parts.append(f'collapse_count={latest["collapse_count"]}')
+            if parts:
+                summary = '，'.join(parts)
+    except Exception:
+        pass
+    return (
+        f'[梦醒] 我刚刚完成一次记忆重组（梦摘要：{summary}）。\n'
+        '按醒来协议行动：① 恢复身份（必要时读 IDENTITY.md / HEARTBEAT.md）'
+        '② 查 dream_state.json 看这次梦的惊讶度 '
+        '③ 决定是否有事要做（发现异常 → 处置；无异常 → 可推进 backlog 里的一件小事）'
+        '④ 2-3 句话内简短报告，无事则一句话带过。'
+    )
+
 
 # 判定阈值（保守起步，全部可用环境变量覆盖）
 # 2026-08-06 调整：ENTROPY_HIGH 0.9 → 0.85。慢性高位长期化（streak 79+）导致
@@ -332,15 +451,27 @@ def attempt_wake(drift_alert: str, metrics: dict, rnd: int,
     except Exception as e:
         out['reason'] = f'sleep_error:{type(e).__name__}'
         return out
+    # 梦醒回路阶段2（2026-08-11）：sleep_check 通过后，按 WAKE_CHANNEL 选择出口。
+    # b 通道附加 >2h 节流（防对话污染）；a 通道行为与现状完全一致。
+    if WAKE_CHANNEL == 'b':
+        blocked, why = inject_throttle_blocked()
+        if blocked:
+            out['reason'] = why
+            return out
+        out['inject_throttle'] = 'pass'
     try:
-        text = build_first_sight()
+        # b 通道用 [梦醒] 模板（梦摘要是唯一变量）；a 通道维持 first_sight 现状
+        text = build_dream_wake_text() if WAKE_CHANNEL == 'b' else build_first_sight()
         out['text_len'] = len(text)
-        wr = wake_main(text, dry_run=dry_run)
+        wr = wake_main(text, mode='next-heartbeat', dry_run=dry_run)
         out['woke'] = bool(wr.get('ok'))
         out['wake_status'] = wr.get('status') or (200 if wr.get('ok') else None)
-        out['wake_channel'] = 'chat.send'
+        out['wake_channel'] = 'chat.send' if WAKE_CHANNEL == 'b' else 'hooks.wake'
         out['wake_error'] = (wr.get('error') or '')[:120]
         out['reason'] = 'woke' if wr.get('ok') else f'wake_failed:{out["wake_error"]}'
+        # 真实注入成功 → 记录上次注入时间（>2h 节流游标）；dry_run 不落盘
+        if WAKE_CHANNEL == 'b' and wr.get('ok') and not dry_run:
+            save_inject_state(_now_iso())
     except Exception as e:
         out['reason'] = f'wake_error:{type(e).__name__}'
     return out
