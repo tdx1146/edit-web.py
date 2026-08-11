@@ -141,19 +141,38 @@ def save_state(st: dict, dry_run: bool = False, path: str = '') -> bool:
 
 
 def collect_metrics() -> dict:
-    """GET LMS /status/main（fail-open：失败返回 None）。"""
+    """GET LMS /status/main（fail-open：网络层失败返回 None）。
+
+    C4 惊讶度语义拆分后契约修复（2026-08-11）：字段级缺失不整体失败。
+    /status/main 在重启后无对话轮时（last_activation is None）不带
+    last_surprise，此时缺省 None；entropy_ratio / purpose_coherence /
+    turn_count 始终存在，即便异常也只缺省该字段（judge 对 None 已按
+    "无法测量"处理：不判、不误触发）。
+    """
     try:
         with urllib.request.urlopen(_LMS_URL, timeout=3) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        st = data.get('status') or data
-        return {
-            'entropy_ratio': float(st['entropy_ratio']),
-            'purpose_coherence': float(st['purpose_coherence']),
-            'last_surprise': float(st['last_surprise']),
-            'turn_count': int(st.get('turn_count', 0)),
-        }
     except Exception:
-        return None
+        return None  # 网络层失败 → 整体 None（fail-open：宁可漏报不可误报）
+    st = data.get('status') if isinstance(data, dict) else None
+    if not isinstance(st, dict):
+        return None  # 响应结构不符，视同不可测
+
+    def _field(key: str, default=None):
+        v = st.get(key)
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        'entropy_ratio': _field('entropy_ratio'),
+        'purpose_coherence': _field('purpose_coherence'),
+        'last_surprise': _field('last_surprise'),      # 无对话轮时缺席 → None
+        'turn_count': int(st.get('turn_count') or 0),  # 缺省 0
+    }
 
 
 def _z_flag(surprise: float, window: list) -> tuple:

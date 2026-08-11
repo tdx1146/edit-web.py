@@ -127,19 +127,42 @@ def _ts() -> str:
 
 
 def collect_lms_metrics() -> dict:
-    """GET LMS /status/main，取画像四指标。失败返回 None（fail-open）。"""
+    """GET LMS /status/main，取画像四指标。
+
+    fail-open 语义（C4 惊讶度语义拆分后契约修复，2026-08-11）：
+      - 网络层失败（LMS 不可达 / 非 JSON / 响应结构不符）→ 返回 None
+      - 字段级缺失不整体失败：/status/main 在重启后无对话轮时
+        （last_activation is None）不带 last_surprise（runtime/loop.py
+        get_status 仅在 last_activation 存在时暴露 surprise 系字段）；
+        此时 last_surprise 缺省 None、turn_count 缺省 0，其余字段照常返回。
+      - entropy_ratio / purpose_coherence 始终存在（在线熵+目的层），
+        即便异常也只缺省该字段为 None（judge_drift 对 None 已按
+        "无法测量"处理：不判、连续计数归零），不再因单字段缺失整体放弃。
+    """
     try:
         with urllib.request.urlopen(_LMS_URL, timeout=3) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        st = data.get('status') or data
-        return {
-            'entropy_ratio': float(st['entropy_ratio']),
-            'purpose_coherence': float(st['purpose_coherence']),
-            'last_surprise': float(st['last_surprise']),
-            'turn_count': int(st.get('turn_count', 0)),
-        }
     except Exception:
-        return None
+        return None  # 网络层失败 → 整体 None（fail-open：宁可漏报不可误报）
+    st = data.get('status') if isinstance(data, dict) else None
+    if not isinstance(st, dict):
+        return None  # 响应结构不符，视同不可测
+
+    def _field(key: str, default=None):
+        v = st.get(key)
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        'entropy_ratio': _field('entropy_ratio'),
+        'purpose_coherence': _field('purpose_coherence'),
+        'last_surprise': _field('last_surprise'),      # 无对话轮时缺席 → None
+        'turn_count': int(st.get('turn_count') or 0),  # 缺省 0
+    }
 
 
 def tail_sandglass(path: str, n: int = 3, max_bytes: int = 4096) -> list:
