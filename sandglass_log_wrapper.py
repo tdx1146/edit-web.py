@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""NexSandglass 落沙封装——给 edit-web.py 调用。"""
+"""NexSandglass 落沙封装——给 edit-web.py 调用。
+
+路径原则（2026-08-12 复现保障）：不硬编码本机绝对路径。
+  - 优先读环境变量 LIGHT_HOME（Agent OS/env.local 已定义）；
+  - 缺省按本文件位置相对推导（wrapper 位于 <LIGHT_HOME>/scripts/）。
+两种方式在本机等价，新机器无需改代码。
+"""
 import sys, os
-sys.path.insert(0, '/vol2/1000/AI专用/所有自动化/轻如烟/sandglass_source')
-os.environ['NEXSANDBASE_HOME'] = '/vol2/1000/AI专用/所有自动化/轻如烟/sandglass'
+
+# <LIGHT_HOME>/scripts/sandglass_log_wrapper.py → LIGHT_HOME = 上上级目录
+_LIGHT_HOME = os.environ.get('LIGHT_HOME') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_LIGHT_HOME, 'sandglass_source'))
+os.environ.setdefault('NEXSANDBASE_HOME', os.path.join(_LIGHT_HOME, 'sandglass'))
 
 from sandglass_log import log_message
 from sandglass_paths import _SANDGLASS, _SHADOW_DB
