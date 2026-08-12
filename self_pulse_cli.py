@@ -8,6 +8,14 @@ v2.4 新增（梦醒回路阶段2-接线，2026-08-11）：WAKE_CHANNEL env 开�
   wake 通道；b = inject/chat.send 通道）。b 通道注入 [梦醒] 模板消息（梦摘要是唯一
   变量），附加 >2h 节流（防对话污染，记录到 inject_state.json）。红线1：B 通道只在
   attempt_wake 链内（sleep_check 通过后）触发，self_pulse 内无其他 inject 调用点。
+
+v2.5 唤醒策略修正（2026-08-12，dandan 澄清权威，沙漏 10:52 记录）：
+  - 唤醒信号 = 惊讶度 z-score 突变（变化/漂移），不是持续高熵——salience_gate
+    只认突变（"梦中惊醒"是突变；持续高熵最多算兴奋睡不着，不触发唤醒）
+  - 白天禁醒窗口：18:00 前禁 routine 级自主唤醒（token 贵，8/6 拍板保留）；
+    夜间（18:00 后）：dandan 无交互 → 可醒，沟通中 → 顺延（sleep_pressure）
+  - 没有"23:00-08:00 安静期"全静默（子 AI 臆测，已纠正；quiet_hours 语义作废）
+  - 醒来后发消息不打扰（不分内向/外向）——唤醒链无消息限制（wake_client 直发）
 从"心跳测试"升级为"自主感知引擎"（Phase6 重建版 v1 的继任者）：
 
 v2.1 新增（自主唤醒架构）：漂移告警出口从"写 sandglass+总线"扩展为
@@ -411,7 +419,11 @@ def judge_drift(metrics: dict, state: dict) -> tuple:
 
 def attempt_wake(drift_alert: str, metrics: dict, rnd: int,
                  dry_run: bool = False, verdict: dict = None) -> dict:
-    """漂移告警 → 体力检查 → 醒来第一眼 → 唤醒主 AI（mode=next-heartbeat 保守）。
+    """salient（惊讶度突变）→ 体力检查 → 醒来第一眼 → 唤醒主 AI（mode=next-heartbeat 保守）。
+
+    2026-08-12（v2.5）：本函数只被 gate_verdict.salient=True 触发；salient 现
+    仅由惊讶度 z-score 突变产生（持续高熵不再 salient）→ 漂移告警单独到不了
+    这里。醒来后发消息不打扰（无内向/外向区分），消息内容照常发出。
 
     返回 dict（供 metrics/日志；token 永不出现）：
       enabled / salient / allowed / woke + reason + 各步详情
@@ -651,9 +663,10 @@ def main(argv=None) -> dict:
         except Exception:
             gate_verdict = None
 
-    # 5a2. 唤醒链（v2.2 级别触发：salient 即唤醒，不再要求 drift_alert 边沿）
-    #   salient 判定通过 → 体力检查 → 醒来第一眼 → POST /hooks/wake
-    #   刹车唯一来源 = sleep_pressure（冷却/去重/休眠/交互相位/anomaly override）
+    # 5a2. 唤醒链（v2.5 突变触发，2026-08-12）：salient = 惊讶度 z-score 突变
+    #   salient（突变）通过 → 体力检查 → 醒来第一眼 → 唤醒出口（A/B 通道）
+    #   刹车来源 = sleep_pressure（白天禁醒窗口 / 交互相位顺延 / 冷却 / 去重 /
+    #   休眠 / 每日预算 / anomaly override）；醒来后发消息不打扰（无限制）
     wake_result = None
     if gate_verdict and gate_verdict.get('salient'):
         wake_result = attempt_wake(drift_alert, metrics, rnd,

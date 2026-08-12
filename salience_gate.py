@@ -8,17 +8,20 @@ salience_gate.py — 显著性判据（B 判据保守版，2026-08-06）
 × goal（Lisman & Grace 2005）。本模块把科学判据工程化，且"宁可漏报
 不可误报"（初始阈值保守）。
 
-判据（高阈值 + 连续计数 + 边沿触发，复用 self_pulse v2 模式）：
-  1. surprise z-score：近期窗口（默认 20 个采样）均值 + 2σ 触发；
-     样本 < 5 或 σ≈0 时不判（fail-open 保守）
-  2. entropy_ratio > 0.85 连续 ≥3 次（2026-08-06 随 self_pulse 调低：0.9→0.85）
-  3. purpose_coherence < 0.8 连续 ≥3 次
-  4. 事件类型权重：anomaly=0.9 > dream/相变=0.6 > task_complete=0.3 > 例行=0.1
-  5. 合流规则：score = 0.25*novelty + 0.50*salience + 0.25*goal，
-     总分 > 0.4 放行（2026-08-06 实测确认：慢性高熵+目的正常持续 salient，
-     score≈0.525 已过；阈值保持 0.4 不再调，权重 0.25/0.50/0.25 已验证）。
-     anomaly（goal 0.9）也需至少一路 LMS 确认合流；SG_ANOMALY_BYPASS=1
-     可强制直通（默认开，2026-08-06：anomaly=硬告警允许穿透）。
+判据（2026-08-12 唤醒信号修正：惊讶度 z-score 突变，非持续高熵；dandan 澄清）：
+  1. surprise z-score 突变：近期窗口（默认 20 个采样）均值 + 2σ 触发
+     novelty；样本 < 5 或 σ≈0 时不判（fail-open 保守）。
+     ★ 这是唯一唤醒信号——"梦中惊醒"是突变，不是持续状态
+     （"它需要的是变化/漂移（惊讶度 z-score 突变），而不是持续高熵"）
+  2. entropy_ratio / purpose_coherence 连续计数（≥3 次）只记录、不再触发：
+     持续高熵最多算"兴奋睡不着"，不是醒（2026-08-12）
+  3. 事件类型权重：anomaly=0.9 > dream/相变=0.6 > task_complete=0.3 > 例行=0.1
+  4. 合流规则：score = 0.25*novelty + 0.50*salience + 0.25*goal，其中
+     salience = novelty（或梦惊讶度突变 dream_novelty）——突变即显著，
+     总分 > 0.4 放行 → 有突变必 salient（routine≈0.775 / anomaly≈0.975 /
+     dream≈0.775），无突变最高 0.225（anomaly 0.9 的 goal 项）永不 salient。
+     SG_ANOMALY_BYPASS 默认关（2026-08-12：漂移告警=持续态不是突变，不该硬直通；
+     紧急恢复可设 1）。
 
 状态文件（跟 sleep_pressure 同目录，持久）：
   /vol2/1000/AI专用/所有自动化/轻如烟/sandglass/salience_state.json
@@ -68,6 +71,15 @@ DREAM_FEED = os.environ.get('SG_DREAM_FEED', '0').strip().lower() in \
 DREAM_W = float(os.environ.get('SG_DREAM_W', '0.25'))        # 第 4 通道权重
 DREAM_FRESH_MAX = float(os.environ.get('SG_DREAM_FRESH_MAX', '3600'))  # 新鲜度 <1h
 
+# 怀疑缺口第 5 通道（体验层 D，设计 v1.1 §6.5，默认关零行为变化）：
+# SG_DOUTH_FEED=1 → 读 LMS /status/main 的 doubt.gaps（A/B 类：fok 未决 /
+# 低置信未复核；C 类探索缺口仅诊断不进灯——专注化修订）。
+# 红线（设计 v1.1 §8.4）：只允许 attempt_wake 链内唤醒（judge 仅由
+# self_pulse_cli 调用，LMS 只发布状态）——本通道在 judge 内，符合红线。
+DOUBT_FEED = os.environ.get('SG_DOUBT_FEED', '0').strip().lower() in \
+    ('1', 'true', 'yes', 'on')
+DOUBT_W = float(os.environ.get('SG_DOUBT_W', '0.20'))        # 第 5 通道权重（弱，保守）
+
 # 判据阈值（保守起步，全部 env 可覆盖）
 SURPRISE_WINDOW = int(os.environ.get('SG_WINDOW', '20'))      # 近期窗口
 SURPRISE_MIN_SAMPLES = int(os.environ.get('SG_MIN_SAMPLES', '5'))  # 不足不判
@@ -79,7 +91,9 @@ SCORE_THRESHOLD = float(os.environ.get('SG_SCORE_THRESHOLD', '0.4'))
 W_NOVELTY = float(os.environ.get('SG_W_NOVELTY', '0.25'))
 W_SALIENCE = float(os.environ.get('SG_W_SALIENCE', '0.50'))
 W_GOAL = float(os.environ.get('SG_W_GOAL', '0.25'))
-ANOMALY_BYPASS = os.environ.get('SG_ANOMALY_BYPASS', '1') == '1'
+ANOMALY_BYPASS = os.environ.get('SG_ANOMALY_BYPASS', '0') == '1'
+# 2026-08-12 唤醒信号修正：anomaly 默认不再硬直通（漂移告警=持续态，不是
+# 突变信号；"持续高熵不触发"）。SG_ANOMALY_BYPASS=1 可紧急恢复旧直通行为。
 
 
 def _now_iso() -> str:
@@ -112,6 +126,9 @@ def load_state(path: str = '') -> dict:
         # 梦通道独立窗口（仅开启时入状态，保证默认关下状态文件结构零变化）
         st['dream_surprise_window'] = []
         st['dream_last_ts'] = None
+    if DOUBT_FEED:
+        # 怀疑缺口边沿状态（仅开启时入状态，默认关零变化）
+        st['doubt_gap_present'] = False
     try:
         with open(path, encoding='utf-8') as f:
             data = json.load(f)
@@ -247,6 +264,37 @@ def _dream_feed_step(st: dict) -> tuple:
     return flag, z
 
 
+def _doubt_feed_step(st: dict, m: dict) -> tuple:
+    """怀疑缺口通道（SG_DOUBT_FEED=1 时由 judge 调用）：读 LMS /status doubt。
+
+    - 数据源：与 collect_metrics 同一次 /status/main 拉取（无额外 HTTP）
+    - 只看 A/B 类（fok_unresolved / low_confidence_unreviewed）；
+      C 类 explore_dims 仅诊断不进灯（专注化修订，设计 v1.1 §6.6：
+      暴露探索缺口=引导探索新方向=跑偏，违反拍板 2）
+    - 边沿触发：从"无缺口"→"有缺口"算 novelty（rising edge），
+      防持续存在的缺口每脉冲都刷分（同 dream 通道"只在 t 变化时追加"
+      的教训）；做梦复核清空 B 类后再次出现会重新触发
+    - fail-open：读不到 doubt 字段 → 不算 novelty（宁可漏报不可误报）
+
+    返回 (doubt_novelty_flag, gap_summary)。
+    """
+    fok, low = [], []
+    try:
+        doubt = (m or {}).get('doubt') or {}
+        if isinstance(doubt, dict):
+            gaps = doubt.get('gaps') or {}
+            fok = gaps.get('fok_unresolved') or []
+            low = gaps.get('low_confidence_unreviewed') or []
+    except Exception:
+        pass
+    present = bool(fok) or bool(low)
+    prev = bool(st.get('doubt_gap_present'))
+    st['doubt_gap_present'] = present
+    if present and not prev:
+        return True, f"fok={len(fok)} lowconf={len(low)}"
+    return False, None
+
+
 def judge(event_type: str = 'routine', metrics: dict = None,
           dry_run: bool = False, state: dict = None) -> dict:
     """显著性判定（每脉冲调用一次以维护窗口/连续计数/边沿）。
@@ -292,18 +340,34 @@ def judge(event_type: str = 'routine', metrics: dict = None,
             purpose_streak = st.get('purpose_streak', 0) + 1
         else:
             purpose_streak = 0
-        salience = entropy_streak >= MIN_STREAK or purpose_streak >= MIN_STREAK
+        # 2026-08-12 唤醒信号修正：持续高熵/目的漂移的 streak 只记录不触发
+        # （"兴奋睡不着"不算醒）——salience 改为下方统一按突变计算
 
     # 梦惊讶度第 4 通道（SG_DREAM_FEED=1 时启用；独立窗口，不污染对话窗口）
     if DREAM_FEED:
         dream_novelty, dream_z = _dream_feed_step(st)
 
+    # 2026-08-12 唤醒信号修正（dandan 澄清）：salience = 惊讶度 z-score 突变
+    # （对话 surprise / 梦 avg_surprise）——"梦中惊醒"是突变，突变即显著；
+    # 持续高熵/目的漂移不再计入显著性，score 公式/阈值 0.4 不变。
+    salience = novelty or dream_novelty
+
+    # 怀疑缺口第 5 通道（SG_DOUBT_FEED=1 时启用；只读 LMS 状态，无副作用）
+    doubt_novelty = False
+    doubt_gap = None
+    if DOUBT_FEED and m is not None:
+        doubt_novelty, doubt_gap = _doubt_feed_step(st, m)
+
     goal = event_weight(event_type)
     score = W_NOVELTY * float(novelty) + W_SALIENCE * float(salience) + W_GOAL * goal
     if DREAM_FEED:
         score += DREAM_W * float(dream_novelty)
+    if DOUBT_FEED:
+        score += DOUBT_W * float(doubt_novelty)
     hard = (event_type == 'anomaly' and ANOMALY_BYPASS)
     salient = hard or score > SCORE_THRESHOLD
+    # rising_edge = 边沿：从"平静"到"惊讶突变"的跳变瞬间。salient 已纯由突变
+    # 驱动 → 持续高熵/持续漂移不产生边沿（2026-08-12 修正）。
     rising_edge = salient and not st.get('last_salient')
 
     verdict = {
@@ -324,6 +388,9 @@ def judge(event_type: str = 'routine', metrics: dict = None,
     if DREAM_FEED:
         verdict['dream_novelty'] = dream_novelty
         verdict['dream_z'] = dream_z
+    if DOUBT_FEED:
+        verdict['doubt_novelty'] = doubt_novelty
+        verdict['doubt_gap'] = doubt_gap
 
     st['surprise_window'] = window
     st['entropy_streak'] = entropy_streak

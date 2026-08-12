@@ -61,21 +61,27 @@ DEDUP_TTL_DAYS = float(os.environ.get('SP_DEDUP_TTL_DAYS', '7'))   # 去重游�
 DEDUP_MAX = 200
 HISTORY_MAX = 20
 
-# ── 安静期 & 每日预算（2026-08-07 dandan 拍板：省 token）──
-# 2026-08-10 夜间权重版（dandan 拍板：DeepSeek 夜间 00:30-08:30 折扣，
-# 白天贵、晚上便宜 → 额度向夜间倾斜，夜间多干活多成长）：
-#   - 夜间窗口（SP_NIGHT_START~SP_NIGHT_END，默认 00:30-08:30）：额度 SP_NIGHT_CAP（默认 8）
-#   - 白天其余时段：额度 SP_DAY_CAP（默认 2，应急用）
-#   - 安静窗口（SP_QUIET_START~SP_QUIET_END，默认 08:30-18:00）：常规唤醒闭嘴（省 token）；
-#     夜间折扣窗口（00:30-08:30）不在安静窗口内，正常唤醒
-#   - 总量仍受 SP_DAILY_CAP（默认 10）兜底；anomaly 硬告警穿透一切
-QUIET_START = os.environ.get('SP_QUIET_START', '08:30')   # 白天贵时段起
-QUIET_END = os.environ.get('SP_QUIET_END', '18:00')       # 白天贵时段止
+# ── 白天禁醒窗口 & 每日预算（2026-08-07 dandan 拍板：省 token）──
+# 2026-08-12 唤醒策略修正（dandan 澄清，权威；沙漏 2026-08-12 10:52 记录）：
+#   - 白天禁醒窗口（DAY_NO_WAKE_START~DAY_NO_WAKE_END，默认 00:00~18:00）：
+#     18:00 前禁 routine 级自主唤醒（token 贵；"18:00 前禁止自主唤醒" 8/6 拍板，保留）
+#   - 夜间（18:00 后）：dandan 无交互（detect_interactive=False 持续 SP_IDLE_MIN
+#     分钟）→ 允许醒；在沟通中 → 顺延（交互相位门，见下）
+#   - 没有"23:00-08:00 安静期"这种全静默——那是子 AI 臆测/幻觉，dandan 2026-08-12
+#     纠正；原 QUIET 语义（安静期）与 08:30-18:00 窗口作废
+#   - 每日预算 SP_DAILY_CAP（默认 10，8/7 拍板"一晚上最多10次"）：routine 唤醒只可能
+#     发生在 18:00 后（白天禁醒窗口先挡），日预算即夜间预算；2026-08-10 夜间分桶
+#     （NIGHT_CAP/DAY_CAP，窗口 00:30-08:30）随安静窗口语义一起作废——其窗口在白天
+#     禁醒窗口内 routine 永远用不到，保留分桶反而会把 18:00 后的晚间唤醒误限到 2 次
+#   - anomaly 硬告警穿透（"禁 routine 级"：紧急事件类保留）
+DAY_NO_WAKE_START = os.environ.get('SP_DAY_NO_WAKE_START', '00:00')  # 白天禁醒窗口起
+DAY_NO_WAKE_END = os.environ.get('SP_DAY_NO_WAKE_END', '18:00')      # 白天禁醒窗口止（不含）
+# 兼容旧变量（SP_QUIET_*，2026-08-12 语义修正前）；新变量显式设置时优先
+if 'SP_QUIET_START' in os.environ and 'SP_DAY_NO_WAKE_START' not in os.environ:
+    DAY_NO_WAKE_START = os.environ['SP_QUIET_START']
+if 'SP_QUIET_END' in os.environ and 'SP_DAY_NO_WAKE_END' not in os.environ:
+    DAY_NO_WAKE_END = os.environ['SP_QUIET_END']
 DAILY_CAP = int(os.environ.get('SP_DAILY_CAP', '10'))
-NIGHT_START = os.environ.get('SP_NIGHT_START', '00:30')   # 折扣窗口起（含）
-NIGHT_END = os.environ.get('SP_NIGHT_END', '08:30')       # 折扣窗口止（不含）
-NIGHT_CAP = int(os.environ.get('SP_NIGHT_CAP', '8'))      # 夜间额度（主力成长时段）
-DAY_CAP = int(os.environ.get('SP_DAY_CAP', '2'))          # 白天额度（应急）
 
 
 def _in_window(hhmm: str, start: str, end: str) -> bool:
@@ -84,6 +90,8 @@ def _in_window(hhmm: str, start: str, end: str) -> bool:
 
 # ── 交互相位门（Phase gate，2026-08-06 dandan 设计）──
 # 人类不打扰正在上班的人：用户最近有输入时，自主唤醒应闭嘴（排队到空闲）。
+# 2026-08-12 澄清：夜间"dandan 不在（无交互）→ 可醒；在沟通中 → 顺延"——
+# 即 detect_interactive=False 持续 SP_IDLE_MIN 分钟才允许 routine 唤醒。
 IDLE_MINUTES = float(os.environ.get('SP_IDLE_MIN', '30'))          # 最近交互判定窗口
 SESSION_DIR = os.environ.get('SP_SESSION_DIR',
     '/vol1/@apphome/trim.openclaw/data/home/.openclaw/agents/main/sessions')
@@ -150,7 +158,7 @@ def default_state() -> dict:
         'total_suppressed': 0,
         'total_overrides': 0,
         'daily': {'date': '', 'count': 0, 'night_count': 0, 'day_count': 0},
-        # 2026-08-10 夜间权重：night_count=夜间(00:30-08:30)唤醒数，day_count=白天数
+        # 2026-08-12 起只计 count（night/day 分桶随夜间窗口作废，字段保留兼容旧状态）
         'updated_at': _now_iso(),
     }
 
@@ -264,26 +272,29 @@ def check(event_type: str = 'routine', fingerprint: str = '',
 
     返回 (allowed: bool, reason: str, state: dict)：
       reason: 'ok' / 'anomaly_override'（放行）
-              'interactive' / 'dedup' / 'cooldown' / 'sleeping'（抑制）
+              'daytime_no_wake' / 'interactive' / 'dedup' / 'cooldown' /
+              'sleeping' / 'daily_cap'（抑制）
     """
     st = state if state is not None else load_state()
     now = time.time() if now is None else now
     st = update(st, now)
 
-    # 0) 安静期闸门：白天贵时段（QUIET_START~QUIET_END）常规唤醒闭嘴（省 token）；
-    #    夜间折扣窗口（00:30-08:30）不在安静期内，正常唤醒；anomaly 穿透
+    # 0) 白天禁醒窗口闸门：18:00 前禁 routine 级自主唤醒（省 token，8/6 拍板；
+    #    2026-08-12 修正：没有"23:00-08:00 安静期"全静默，白天窗口 = 00:00~18:00）；
+    #    anomaly 硬告警穿透（"禁 routine 级"，紧急事件类保留）
     override = (event_type == 'anomaly')
     if not override:
         try:
             hhmm_now = datetime.fromtimestamp(now).strftime('%H:%M')
-            if _in_window(hhmm_now, QUIET_START, QUIET_END):
+            if _in_window(hhmm_now, DAY_NO_WAKE_START, DAY_NO_WAKE_END):
                 st['total_suppressed'] = st.get('total_suppressed', 0) + 1
                 save_state(st, dry_run=dry_run)
-                return False, 'quiet_hours', st
+                return False, 'daytime_no_wake', st
         except Exception:
             pass
 
-    # 0b) 交互相位门：用户最近有输入 → 常规唤醒闭嘴（排队到空闲）；anomaly 穿透
+    # 0b) 交互相位门：dandan 最近有交互（SP_IDLE_MIN 分钟内）→ 顺延不醒
+    #     （8/12 拍板：夜间"在沟通中"→ 顺延；"不在（无交互）"→ 可醒）；anomaly 穿透
     if interactive is None:
         interactive = detect_interactive(now)
     if interactive and not override:
@@ -314,19 +325,17 @@ def check(event_type: str = 'routine', fingerprint: str = '',
         save_state(st, dry_run=dry_run)
         return False, 'cooldown', st
 
-    # 3.5) 每日预算：按时段分桶（2026-08-10 夜间权重版）；anomaly 穿透
-    #     夜间窗口（DeepSeek 折扣 00:30-08:30）用 NIGHT_CAP（主力成长）；
-    #     白天用 DAY_CAP（应急）；总量再受 DAILY_CAP 兜底。
+    # 3.5) 每日预算（8/7 拍板：一晚上最多 10 次）：routine 唤醒只可能发生在
+    #      18:00 后（白天禁醒窗口先挡），日预算即夜间预算；anomaly 穿透。
+    #      2026-08-12：移除 NIGHT_CAP/DAY_CAP 分桶（其窗口 00:30-08:30 已在
+    #      白天禁醒窗口内，routine 永远用不到；保留分桶会让 18:00 后的晚间
+    #      唤醒被误限到 DAY_CAP=2，违背"一晚上最多 10 次"）。
     if not override:
         today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
         daily = st.get('daily') or {}
         if daily.get('date') != today:
             daily = {'date': today, 'count': 0, 'night_count': 0, 'day_count': 0}
-        hhmm = datetime.fromtimestamp(now).strftime('%H:%M')
-        is_night = _in_window(hhmm, NIGHT_START, NIGHT_END)
-        bucket_cap = NIGHT_CAP if is_night else DAY_CAP
-        bucket_count = daily.get('night_count', 0) if is_night else daily.get('day_count', 0)
-        if bucket_count >= bucket_cap or daily.get('count', 0) >= DAILY_CAP:
+        if daily.get('count', 0) >= DAILY_CAP:
             st['total_suppressed'] = st.get('total_suppressed', 0) + 1
             save_state(st, dry_run=dry_run)
             return False, 'daily_cap', st
@@ -343,18 +352,13 @@ def check(event_type: str = 'routine', fingerprint: str = '',
     if override:
         st['total_overrides'] = st.get('total_overrides', 0) + 1
     else:
-        # 每日预算计数（放行成功才计入，分桶：夜间/白天）
+        # 每日预算计数（放行成功才计入；2026-08-12 起只计总量，
+        # night_count/day_count 字段保留兼容旧状态文件）
         today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
         daily = st.get('daily') or {}
         if daily.get('date') != today:
             daily = {'date': today, 'count': 0, 'night_count': 0, 'day_count': 0}
         daily['count'] = daily.get('count', 0) + 1
-        hhmm = datetime.fromtimestamp(now).strftime('%H:%M')
-        is_night = _in_window(hhmm, NIGHT_START, NIGHT_END)
-        if is_night:
-            daily['night_count'] = daily.get('night_count', 0) + 1
-        else:
-            daily['day_count'] = daily.get('day_count', 0) + 1
         st['daily'] = daily
     history = st.get('history') or []
     history.append({'ts': _now_iso(now), 'event_type': event_type,
@@ -383,8 +387,8 @@ def status(st: dict = None) -> dict:
         'total_overrides': st.get('total_overrides', 0),
         'dedup_count': len(st.get('dedup') or {}),
         'daily': st.get('daily'),
-        'night_window': f"{NIGHT_START}~{NIGHT_END} (cap={NIGHT_CAP})",
-        'day_cap': DAY_CAP,
+        'daytime_no_wake_window': f"{DAY_NO_WAKE_START}~{DAY_NO_WAKE_END}",
+        'daily_cap': DAILY_CAP,
     }
 
 
