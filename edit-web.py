@@ -293,14 +293,35 @@ def _cleanup_lock():
         pass
 
 
+# R-4b（2026-08-13）：落沙失败必须可见，禁止静默跳过（复验 R-4 教训）。
+# wrapper 缺失 → 编辑器日志打印一次醒目警告；wrapper 崩溃 → stderr 落盘留痕。
+_sandglass_warned = {"flag": False}
+
+
 def _sandglass_log(content, role='user'):
     """写入沙漏记忆引擎（异步，不阻塞主流程）。
     用于所有消息入口：用户消息、妹妹 inject、AI 回复。
+    fail-loud（R-4）：wrapper 缺失/失败打日志留痕，不再 if os.path.exists 静默跳过。
     """
     try:
         import subprocess as _sp
         wrapper = os.path.join(os.path.dirname(__file__), "sandglass_log_wrapper.py")
-        if os.path.exists(wrapper):
+        if not os.path.exists(wrapper):
+            if not _sandglass_warned["flag"]:
+                _sandglass_warned["flag"] = True
+                print(f"[落沙警告] sandglass_log_wrapper.py 缺失: {wrapper} —— 每轮落沙将失败（失忆！）。"
+                      f"请运行 bash deploy.sh bootstrap 补齐（R-4）", flush=True)
+            return
+        # wrapper stderr 落盘（wrapper 崩溃时可见，不吞错）
+        _err_log = os.path.join(os.path.dirname(__file__), "..", "memory", "sandglass-wrapper-errors.log")
+        try:
+            with open(_err_log, "a", encoding="utf-8") as _ef:
+                _sp.Popen(
+                    ["python3", wrapper, content[:500], role],
+                    stdout=_sp.DEVNULL, stderr=_ef
+                )
+        except OSError:
+            # memory/ 不可写时退化为 DEVNULL（日志通道不可用不应阻断落沙本身）
             _sp.Popen(
                 ["python3", wrapper, content[:500], role],
                 stdout=_sp.DEVNULL, stderr=_sp.DEVNULL
