@@ -1,11 +1,33 @@
 # ═══ 密钥与实例配置（绝不分发）═══
-api_keys.py            # 已无硬编码密钥(纯env读取)，但保持不入库双保险
+api_keys.py
 .env
 .env.*
 !*.example
 openclaw.json*
 identity/
 system-config/
+
+# ═══ R-5（2026-08-13）：个人记忆/身份/实例配置 —— 公开仓绝不分发 ═══
+# 本地保留、禁止入库。注意：这些文件已在 GitHub main 历史中出现过，
+# 清史需 dandan/姐姐决策（force-push 或保留历史）；本段保证今后不再跟踪。
+# 个人记忆与笔记
+MEMORY.md
+backlog.md
+next-turn-note.md
+memory/backlog.md
+memory/next-turn-note.md
+facts.dict.md
+# 身份文件
+AGENTS.md
+IDENTITY.md
+SOUL.md
+USER.md
+TOOLS.md
+# 实例配置（机器路径/端口快照，换机器只改这个）
+editor-config.json
+# 个人文档
+可复制.md
+🌫️-摸摸协议.md
 
 # ═══ 运行时数据（绝不分发）═══
 .inject_logs/
