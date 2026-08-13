@@ -51,12 +51,20 @@ def spawn_subagent_process(task, model, timeout, get_session_info, gateway_port,
 
 
 # ── exec 子代理 ─────────────────────────────────────────────────────────────
+# 密钥一律从环境变量读取（公开仓绝不分发明文密钥；与 api_keys.py 同构）。
+# 需在启动环境设置：DEEPSEEK_API_KEY / GLM_API_KEY / HUNYUAN_API_KEY
+
+def _env_key(env_name, model):
+    v = os.environ.get(env_name, "").strip()
+    if not v:
+        raise RuntimeError(f"{env_name} 未设置（密钥经环境变量注入，不再硬编码于公开仓）")
+    return v
 
 EXEC_MODELS = {
-    'deepseek-chat': {'url': 'https://api.deepseek.com/chat/completions', 'key': 'sk-c3ae891c6b8c42b89d4ea3a0145e8db0', 'provider': 'DeepSeek'},
-    'GLM-Z1-Flash': {'url': 'https://open.bigmodel.cn/api/paas/v4/chat/completions', 'key': '39ff03af4cac4cd6989d04ad6dcb32f1.p3RL1Jvpmw0Kpqxf', 'provider': 'GLM'},
-    'hunyuan-instruct': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': 'sk-8rfLwQYk27HrKShpQNyZqCLbq9h9UCaYQXdMEaK3XggpAoJe', 'provider': '混元', 'model': 'hunyuan-2.0-instruct-20251111'},
-    'hunyuan-thinking': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key': 'sk-8rfLwQYk27HrKShpQNyZqCLbq9h9UCaYQXdMEaK3XggpAoJe', 'provider': '混元', 'model': 'hunyuan-2.0-thinking-20251109'},
+    'deepseek-chat': {'url': 'https://api.deepseek.com/chat/completions', 'key_env': 'DEEPSEEK_API_KEY', 'provider': 'DeepSeek'},
+    'GLM-Z1-Flash': {'url': 'https://open.bigmodel.cn/api/paas/v4/chat/completions', 'key_env': 'GLM_API_KEY', 'provider': 'GLM'},
+    'hunyuan-instruct': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key_env': 'HUNYUAN_API_KEY', 'provider': '混元', 'model': 'hunyuan-2.0-instruct-20251111'},
+    'hunyuan-thinking': {'url': 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', 'key_env': 'HUNYUAN_API_KEY', 'provider': '混元', 'model': 'hunyuan-2.0-thinking-20251109'},
 }
 
 
@@ -65,6 +73,10 @@ def exec_subagent(task, model, timeout, history_path, workdir):
     if model not in EXEC_MODELS:
         return {"ok": False, "error": f"未知模型: {model}"}
     cfg = EXEC_MODELS[model]
+    try:
+        cfg['key'] = _env_key(cfg['key_env'], model)
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
     start = time.time()
     os.makedirs(workdir, exist_ok=True)
     try:

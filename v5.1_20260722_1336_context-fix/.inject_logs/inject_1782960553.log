@@ -1,4 +1,0 @@
-[timing] recv challenge: 28ms
-[timing] connect sent: 35ms
-[timing] recv connect ack: 54ms
-{"ok":true}

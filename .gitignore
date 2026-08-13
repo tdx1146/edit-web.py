@@ -32,3 +32,41 @@ sandglass/*.idx
 *.gguf
 
 .git/
+
+# ═══ R-5（2026-08-13，三轮）：个人记忆/身份/实例配置/备份 —— 公开仓绝不分发 ═══
+# 本地保留、禁止入库。注意：这些文件已在 GitHub main 历史中出现过，
+# 清史需 dandan/姐姐决策（force-push 或保留历史）；本段保证今后不再跟踪。
+# 个人记忆与笔记
+MEMORY.md
+backlog.md
+next-turn-note.md
+memory/
+facts.dict.md
+2026-*.md
+digest-history.jsonl
+deploy-log.txt
+pitfall-sweep-jl.md
+# 身份文件
+AGENTS.md
+IDENTITY.md
+SOUL.md
+USER.md
+TOOLS.md
+STARTER.md
+HEARTBEAT.md
+sandglass/persona/
+# 实例配置（机器路径/端口快照，换机器只改这个；system-config/openclaw.json 曾含真实网关 auth token）
+api_keys.py
+editor-config.json
+system-config/
+# 个人文档
+可复制.md
+🌫️-摸摸协议.md
+# 踱步/轮感 运行时状态
+.踱步/
+.轮感/
+.步伐/
+# 历史备份/版本目录（含个人文件整包）
+ARCHIVED/
+v[0-9]*/
+backup-2026-*/

@@ -1,2 +1,0 @@
-awake.py triggered at 2026-06-06 11:00:10
-facts.dict 断言数: 10
