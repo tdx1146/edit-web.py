@@ -70,3 +70,6 @@ system-config/
 ARCHIVED/
 v[0-9]*/
 backup-2026-*/
+deploy-notes/
+revisions/
+experimental/
